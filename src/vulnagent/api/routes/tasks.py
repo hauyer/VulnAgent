@@ -1,0 +1,44 @@
+"""Task lifecycle endpoints."""
+
+from fastapi import APIRouter, HTTPException, Request, status
+from pydantic import BaseModel
+
+from vulnagent.core.models import Target, TargetType, Task
+from vulnagent.utils.ids import new_target_id
+
+router = APIRouter(prefix="/tasks", tags=["tasks"])
+
+
+class CreateTaskRequest(BaseModel):
+    target_path: str
+    target_type: TargetType
+
+
+@router.post("", response_model=Task, status_code=status.HTTP_201_CREATED)
+async def create_task(payload: CreateTaskRequest, request: Request) -> Task:
+    target = Target(target_id=new_target_id(), path=payload.target_path, target_type=payload.target_type)
+    return request.app.state.task_manager.create_task(target)
+
+
+@router.get("", response_model=list[Task])
+async def list_tasks(request: Request) -> list[Task]:
+    return request.app.state.task_manager.list_tasks()
+
+
+@router.get("/{task_id}", response_model=Task)
+async def get_task(task_id: str, request: Request) -> Task:
+    task = request.app.state.task_manager.get_task(task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return task
+
+
+@router.post("/{task_id}/run", response_model=Task)
+async def run_task(task_id: str, request: Request) -> Task:
+    if request.app.state.task_manager.get_task(task_id) is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    await request.app.state.orchestrator.run(task_id)
+    task = request.app.state.task_manager.get_task(task_id)
+    assert task is not None
+    return task
+

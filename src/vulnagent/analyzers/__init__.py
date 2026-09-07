@@ -1,0 +1,2 @@
+"""Static analysis capability interfaces."""
+
