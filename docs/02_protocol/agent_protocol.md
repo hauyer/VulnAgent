@@ -100,22 +100,16 @@ class BaseAgent(ABC):
 
 `PLAN`
 
-示例 payload：
+V0.2 payload：
 
 ```json
 {
-  "steps": [
-    {
-      "agent": "source_audit",
-      "priority": 1,
-      "reason": "C source project detected"
-    },
-    {
-      "agent": "fuzz",
-      "priority": 2,
-      "reason": "Input parsing surface exists"
-    }
-  ]
+  "selected_agents": ["source_audit", "verification", "reviewer", "report"],
+  "rationale_summary": "Use source audit for a source target.",
+  "priorities": {"source_audit": 1, "verification": 2},
+  "requested_capabilities": ["source.parse", "source.audit"],
+  "stop_conditions": ["report_generated", "max_agent_steps_reached"],
+  "metadata": {"dynamic": true}
 }
 ```
 

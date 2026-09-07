@@ -26,12 +26,12 @@ API / Web / CLI
 
 ### Layer 2：Orchestration
 
-Core / Pipeline / Planner
+Core / Agent Runtime / Pipeline / Supervisor / Planner
 
 负责：
 
 - 创建任务
-- 调度 Agent
+- 通过有界状态图动态调度 Agent
 - 管理状态
 - 聚合结果
 
@@ -292,31 +292,21 @@ Report 层只读取已经结构化的：
 
 不能重新执行漏洞检测。
 
-## 12. V0.1 Mock Pipeline
+## 12. V0.2 Dynamic Mock Workflow
 
-V0.1 应首先实现：
+V0.2 已实现：
 
 ```text
-POST /tasks
-      ↓
-Task Created
-      ↓
-PlannerAgent(Mock)
-      ↓
-SourceAuditAgent(Mock)
-      ↓
-Candidate Generated
-      ↓
-VerificationAgent(Mock)
-      ↓
-Finding Confirmed / Rejected
-      ↓
-ReportAgent(Mock)
-      ↓
-Task Completed
+POST /tasks → Orchestrator → AgentRuntime → Planner
+                                      ├→ Source Analysis
+                                      └→ Binary Analysis
+                                             ↓
+                              optional authorized Mock Fuzz
+                                             ↓
+                             Verification → Reviewer → Report
 ```
 
-这个流程跑通以后再替换各 Mock 模块。
+零发现时 Analysis 可直接进入 Report；证据不足时 Verification 可请求一次受限补充分析；非法或重复路由会确定性回退到 Report/Finish。LangGraph State 不替代公共 Contract 或持久化模型。
 
 这样多人开发不会互相阻塞。
 
@@ -343,6 +333,6 @@ Task Completed
 1. 实现 BaseAgent
 2. 注册 Agent
 3. 定义输入输出
-4. 接入 Pipeline
+4. 在 Agent Runtime 注册结构化 Route
 
 而不应修改所有已有模块。
