@@ -2,7 +2,8 @@
 
 from typing import Any
 
-from vulnagent.core.models import Target, Task, TaskStatus, utc_now
+from vulnagent.contracts import Target, Task, TaskStatus
+from vulnagent.contracts.common import utc_now
 from vulnagent.storage.memory import InMemoryStorage
 from vulnagent.utils.ids import new_task_id
 
@@ -35,4 +36,3 @@ class InMemoryTaskManager:
             updated.metadata.update(metadata)
         updated.updated_at = utc_now()
         return self._storage.save(task_id, updated)
-

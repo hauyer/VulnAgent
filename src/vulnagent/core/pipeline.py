@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 
 from vulnagent.agents.base import BaseAgent
-from vulnagent.core.models import AgentResult, AnalysisContext, TaskStatus
+from vulnagent.contracts import AgentResult, AnalysisContext, TaskStatus
 
 
 @dataclass(frozen=True)
@@ -28,5 +28,6 @@ class Pipeline:
         else:
             context.findings.extend(result.findings)
         context.evidence.extend(result.evidence)
+        context.verifications.extend(result.verifications)
+        context.reports.extend(result.reports)
         context.artifacts.extend(result.artifacts)
-

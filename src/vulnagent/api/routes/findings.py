@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, HTTPException, Request
 
-from vulnagent.core.models import VulnerabilityCandidate
+from vulnagent.contracts import VulnerabilityCandidate
 
 router = APIRouter(prefix="/tasks", tags=["findings"])
 
@@ -13,4 +13,3 @@ async def get_findings(task_id: str, request: Request) -> list[VulnerabilityCand
         raise HTTPException(status_code=404, detail="Task not found")
     context = request.app.state.orchestrator.get_context(task_id)
     return [] if context is None else context.findings
-

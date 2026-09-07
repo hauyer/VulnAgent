@@ -1,6 +1,6 @@
 """Minimal deterministic finding deduplication."""
 
-from vulnagent.core.models import VulnerabilityCandidate
+from vulnagent.contracts import VulnerabilityCandidate
 
 
 def deduplicate(findings: list[VulnerabilityCandidate]) -> list[VulnerabilityCandidate]:
@@ -12,4 +12,3 @@ def deduplicate(findings: list[VulnerabilityCandidate]) -> list[VulnerabilityCan
             seen.add(key)
             result.append(finding)
     return result
-

@@ -1,16 +1,14 @@
 """Evidence collection helper."""
 
-from vulnagent.core.models import Evidence
-from vulnagent.evidence.store import InMemoryEvidenceStore
+from vulnagent.contracts import Evidence, EvidenceRepository
 
 
 class EvidenceCollector:
     """Persist a batch of structured evidence."""
 
-    def __init__(self, store: InMemoryEvidenceStore) -> None:
+    def __init__(self, store: EvidenceRepository) -> None:
         self.store = store
 
     def collect(self, evidence: list[Evidence]) -> None:
         for item in evidence:
-            self.store.add(item)
-
+            self.store.save(item)

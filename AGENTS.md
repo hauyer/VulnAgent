@@ -520,3 +520,18 @@ V0.1 最低要求：`pytest` 能够完整通过。
 → 对比
 → 解释
 ```
+
+## 21. 模块所有权与解耦规则
+
+1. 优先修改自己的 Owner 目录；跨模块修改必须最小化。
+2. 禁止重新定义公共 Schema；公共模型统一从 `vulnagent.contracts` 导入。
+3. `contracts/` 中标有 `PUBLIC CONTRACT` 的文件属于冻结协议，变更必须同步影响分析、文档和契约测试。
+4. 禁止跨模块直接 import 具体实现，使用 Protocol、依赖注入、结构化事件或兼容 Adapter。
+5. 跨 Agent 调度只能经过 Orchestrator；Agent 不直接调用另一个 Agent。
+6. Analyzer 不调用 Verification；发现模块不得输出 `CONFIRMED`。
+7. Verification 是 `CONFIRMED` 和 `REJECTED` 状态的唯一写入者。
+8. Evidence 不依赖具体分析工具；Report 只消费 Task、Finding、VerificationResult 和 Evidence。
+9. Frontend 只通过 API 访问后端数据，不 import 后端内部实现。
+10. 第三方工具必须位于 Adapter 边界之后，业务模块不得直接调用厂商 API 或工具进程。
+11. 每个能力模块必须提供可独立测试的接口和 Mock。
+12. 公共协议修改必须同步更新文档、契约测试并尽量保持向后兼容。

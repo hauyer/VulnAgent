@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 
-from vulnagent.core.models import AgentResult, AnalysisContext, Task
+from vulnagent.contracts import AgentResult, AnalysisContext, Task
 
 
 class BaseAgent(ABC):
@@ -13,4 +13,3 @@ class BaseAgent(ABC):
     @abstractmethod
     async def run(self, task: Task, context: AnalysisContext) -> AgentResult:
         """Run the agent without mutating global state."""
-

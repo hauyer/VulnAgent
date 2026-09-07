@@ -1,6 +1,6 @@
 """Task state transition validation."""
 
-from vulnagent.core.models import TaskStatus
+from vulnagent.contracts import TaskStatus
 
 _TRANSITIONS = {
     TaskStatus.CREATED: {TaskStatus.PROFILING, TaskStatus.FAILED},
@@ -21,4 +21,3 @@ class StateManager:
     def validate(self, current: TaskStatus, target: TaskStatus) -> None:
         if target not in _TRANSITIONS[current]:
             raise ValueError(f"Invalid task transition: {current.value} -> {target.value}")
-

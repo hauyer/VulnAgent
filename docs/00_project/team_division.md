@@ -1,253 +1,82 @@
-# VulnAgent 九人协作与模块责任划分
+# VulnAgent 九人并行开发与模块责任划分
 
-## 1. 分工原则
+本文件是 V0.1 九人 Owner 边界的权威说明。具体依赖约束见 `docs/01_architecture/module_boundaries.md`，机器可执行守卫见 `tests/architecture/`。
 
-九名成员采用模块 Owner 制。
+## 共同规则
 
-Owner 对模块承担：
+- Owner 对本模块接口、实现、测试、文档和 PR Review 负责。
+- 日常开发只修改 Owner 目录；跨目录修改必须最小化并邀请相关 Owner Review。
+- 公共模型只来自 `vulnagent.contracts`，不得创建 MyFinding、AuditFinding 等平行协议。
+- Agent 不直接调用 Agent；跨 Agent 编排只由 Orchestrator 完成。
+- 具体工具只通过 Adapter 接入。
+- 每个能力必须提供 Mock，使主分支始终可集成和测试。
 
-- 架构责任
-- 公共接口责任
-- 代码质量责任
-- 测试责任
-- 文档责任
-- Pull Request Review 责任
+## 成员 1：Core / Orchestrator
 
-Owner 并不意味着其他成员禁止修改对应模块。
+Owner：`src/vulnagent/core/`、公共 Contracts 协调、`agents/base.py`、`agents/registry.py`、`agents/planner_agent.py`、`main.py`。
 
-跨模块开发应提前说明并通过 Pull Request 协作。
+负责 Task 生命周期、Pipeline、状态管理、事件总线、上下文、Agent 调度和系统集成。不得在 Core 实现分析算法。公共 Contract 修改必须同步契约测试和协议文档。
 
-## 2. P1：总体架构与 Core
+## 成员 2：Source Parser
 
-主要目录：
+Owner：`src/vulnagent/analyzers/source/parser/`。
 
-`src/vulnagent/core/`
+负责项目导入、语言识别、目录解析、AST、符号、依赖和基础调用图。输入 `ProjectInput`，输出 `SourceAnalysisResult`。不得判断漏洞或调用 Audit、Verification、Fuzz、具体 LLM 厂商。
 
-主要任务：
+## 成员 3：Source Audit
 
-- 系统总体架构
-- Task 生命周期
-- Pipeline
-- Orchestrator
-- State Manager
-- Event Bus
-- 公共上下文
-- 各模块集成
-- 公共 Schema 协调
+Owner：`src/vulnagent/analyzers/source/audit/`、Semgrep Adapter。
 
-负责保证：
+负责危险 API、Source/Sink、数据流、污点、规则、语义审计和 Candidate 构建。只消费 `SourceAnalysisResult`，只输出 `VulnerabilityCandidate(CANDIDATE)`，不得确认漏洞。
 
-从任务创建到报告输出的整体 Pipeline 可以正常运行。
+## 成员 4：Binary Reverse
 
-## 3. P2：Multi-Agent Framework
+Owner：`src/vulnagent/analyzers/binary/common/`、`binary/reverse/`、Ghidra/radare2/UPX Adapter。
 
-主要目录：
+负责 PE/ELF、架构、区段、导入导出、字符串、熵、壳检测、函数与基础 CFG，输出 `BinaryAnalysisResult`。不负责复杂混淆语义、业务逻辑识别或漏洞确认。
 
-`src/vulnagent/agents/`
+## 成员 5：Obfuscation / Logic
 
-主要任务：
+Owner：`src/vulnagent/analyzers/binary/obfuscation/`、`binary/logic/`。
 
-- BaseAgent
-- Agent Registry
-- Agent 生命周期
-- AgentMessage
-- PlannerAgent
-- Agent 状态
-- Agent 调度
-- Agent 通信机制
+只消费 `BinaryAnalysisResult`，负责混淆特征和认证、密码学、注册等逻辑定位。不得重新执行基础二进制解析，不得依赖 Reverse 具体类。
 
-协调其他成员将具体分析能力接入 Agent Framework。
+## 成员 6：Dynamic / Fuzz
 
-## 4. P3：Source Code Analysis
+Owner：`src/vulnagent/fuzz/`。
 
-主要目录：
+负责 Seed、Mutation、Executor、Coverage、Crash 和受控动态分析。输入 `FuzzRequest`，输出 `FuzzResult` 与 Evidence。真实执行必须明确授权并位于沙箱；不得确认漏洞。
 
-`src/vulnagent/analyzers/source/`
+## 成员 7：Verification
 
-主要任务：
+Owner：`src/vulnagent/verification/`、`agents/verification_agent.py`、`agents/reviewer_agent.py`。
 
-- 语言识别
-- AST
-- CFG
-- Call Graph
-- Dangerous API
-- Data Flow
-- Taint Analysis
-- Source/Sink
-- 静态漏洞候选生成
+消费 `VulnerabilityCandidate + VerificationContext`，输出 `VerificationResult`。只有本边界可以写入 `CONFIRMED` 或 `REJECTED`。不得反向依赖 Source、Binary、Fuzz 的具体实现。
 
-优先支持：
+## 成员 8：Platform / Frontend
 
-- C
-- C++
-- Python
+Owner：`frontend/`，协作维护 `src/vulnagent/api/`。
 
-输出必须统一为：
+Frontend 只通过 API 读取 Task、Finding、Evidence、VerificationResult、Report 和 Trace。不得导入 Backend 内部类或读取 Analyzer 文件。
 
-`VulnerabilityCandidate`
+## 成员 9：Evidence / Report / Benchmark
 
-## 5. P4：Binary Analysis
+Owner：`src/vulnagent/evidence/`、`src/vulnagent/report/`、`benchmarks/`、`experiments/`。
 
-主要目录：
+Evidence 负责收集、关联、存储、查询和证据图；Report 只消费公共 Contracts；实验负责可复现评测。不得依赖具体工具或 Agent 内部对象。
 
-`src/vulnagent/analyzers/binary/`
-
-主要任务：
-
-- PE / ELF 识别
-- Binary Metadata
-- Imports
-- Exports
-- Strings
-- Functions
-- Instructions
-- CFG
-- Packer Detection
-- Obfuscation Detection
-- Binary Vulnerability Candidate
-
-不得在初期自行实现完整反编译器。
-
-允许通过 Adapter 获取底层分析结果。
-
-## 6. P5：Fuzzing
-
-主要目录：
-
-`src/vulnagent/fuzz/`
-
-主要任务：
-
-- Seed Corpus
-- Seed Generator
-- Mutator
-- Executor Adapter
-- Coverage
-- Crash Collector
-- Crash Analyzer
-- Agent-Guided Fuzz
-
-所有目标程序必须运行于受控环境。
-
-## 7. P6：Verification & Evidence
-
-主要目录：
-
-- `src/vulnagent/verification/`
-- `src/vulnagent/evidence/`
-
-主要任务：
-
-- 漏洞复核
-- 去误报
-- 去重
-- Severity
-- Confidence 更新
-- Evidence Collector
-- Evidence Chain
-- Verification Result
-
-只有本模块有权将漏洞从：
-
-`CANDIDATE`
-
-变更为：
-
-`CONFIRMED`
-
-## 8. P7：LLM & Knowledge
-
-主要目录：
-
-- `src/vulnagent/llm/`
-- `src/vulnagent/knowledge/`
-
-主要任务：
-
-- BaseLLM
-- DeepSeek Adapter
-- GLM Adapter
-- Kimi Adapter
-- MockLLM
-- Prompt Manager
-- Model Router
-- CWE Knowledge
-- CVE Knowledge
-- Vulnerability Pattern
-
-不得让业务逻辑依赖具体模型。
-
-## 9. P8：Platform & Storage
-
-主要目录：
-
-- `src/vulnagent/api/`
-- `src/vulnagent/storage/`
-- `src/web/`
-
-主要任务：
-
-- FastAPI
-- Task API
-- Findings API
-- Report API
-- Database
-- Web UI
-- Dashboard
-- Agent Workflow Visualization
-
-平台展示必须读取真实 Backend 状态，而不是写死 Demo 数据。
-
-## 10. P9：Experiment & Testing
-
-主要目录：
-
-- `tests/`
-- `experiments/`
-- `benchmarks/`
-- `.github/`
-
-主要任务：
-
-- pytest
-- Integration Tests
-- System Tests
-- Benchmark
-- Experiment Config
-- Metrics
-- Ablation
-- CI
-- Regression
-- Result Collection
-
-负责保证实验：
-
-**可复现、可比较、可追踪。**
-
-## 11. 第一阶段共同任务
-
-V0.1 前所有人不得立即开发复杂算法。
-
-首先共同冻结：
-
-1. Task Schema
-2. AgentMessage Schema
-3. VulnerabilityCandidate Schema
-4. Evidence Schema
-5. Pipeline Lifecycle
-
-冻结后进入并行开发。
-
-## 12. 分支约定
+## 分支建议
 
 ```text
-P1: feature/core-pipeline
-P2: feature/agent-framework
-P3: feature/source-analysis
-P4: feature/binary-analysis
-P5: feature/fuzz-engine
-P6: feature/verification
-P7: feature/llm-knowledge
-P8: feature/platform
-P9: feature/experiments
+feature/core-pipeline
+feature/source-parser
+feature/source-audit
+feature/binary-reverse
+feature/binary-logic
+feature/fuzz-engine
+feature/verification
+feature/platform
+feature/evidence-report-experiments
 ```
+
+真实 GitHub 用户名确定后，将 `.github/CODEOWNERS.example` 替换为 `.github/CODEOWNERS` 并启用强制 Review。

@@ -1,0 +1,22 @@
+# Replace placeholders with real GitHub handles before renaming to CODEOWNERS.
+/src/vulnagent/contracts/                         @member1
+/src/vulnagent/core/                              @member1
+/src/vulnagent/agents/base.py                     @member1
+/src/vulnagent/agents/registry.py                 @member1
+/src/vulnagent/agents/planner_agent.py            @member1
+/src/vulnagent/analyzers/source/parser/           @member2
+/src/vulnagent/analyzers/source/audit/            @member3
+/src/vulnagent/analyzers/binary/reverse/          @member4
+/src/vulnagent/analyzers/binary/common/           @member4
+/src/vulnagent/analyzers/binary/obfuscation/      @member5
+/src/vulnagent/analyzers/binary/logic/            @member5
+/src/vulnagent/fuzz/                              @member6
+/src/vulnagent/verification/                      @member7
+/src/vulnagent/agents/verification_agent.py       @member7
+/src/vulnagent/agents/reviewer_agent.py           @member7
+/frontend/                                        @member8
+/src/vulnagent/api/                               @member8
+/src/vulnagent/evidence/                          @member9
+/src/vulnagent/report/                            @member9
+/benchmarks/                                      @member9
+/experiments/                                     @member9

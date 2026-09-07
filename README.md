@@ -46,9 +46,17 @@ uvicorn vulnagent.api.app:app --reload
 - `GET /tasks/{task_id}`
 - `POST /tasks/{task_id}/run`
 - `GET /tasks/{task_id}/findings`
+- `GET /tasks/{task_id}/evidence`
+- `GET /tasks/{task_id}/report`
+- `GET /tasks/{task_id}/events`
+- `GET /tasks/{task_id}/trace`
+
+以上接口同时提供 `/api` 前缀版本；无前缀路径为 V0.1 兼容入口。
 
 ## Project Structure
 
 核心代码位于 `src/vulnagent/`：`core` 负责任务和调度，`agents` 提供统一 Agent 框架，`analyzers`、`fuzz`、`verification`、`evidence`、`llm` 和 `report` 提供可替换能力，`api` 暴露 FastAPI 接口，`storage` 提供 V0.1 内存存储。
+
+跨模块代码必须从 `vulnagent.contracts` 导入公共 DTO 与 Protocol。`vulnagent.core.models` 仅为旧代码保留兼容导出。九人 Owner 边界和依赖规则见 `docs/01_architecture/module_boundaries.md`。
 
 设计约束与协议详见 `AGENTS.md` 和 `docs/`。

@@ -3,7 +3,7 @@
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel
 
-from vulnagent.core.models import Target, TargetType, Task
+from vulnagent.contracts import DomainEvent, Target, TargetType, Task
 from vulnagent.utils.ids import new_target_id
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -42,3 +42,15 @@ async def run_task(task_id: str, request: Request) -> Task:
     assert task is not None
     return task
 
+
+@router.get("/{task_id}/events", response_model=list[DomainEvent])
+async def list_task_events(task_id: str, request: Request) -> list[DomainEvent]:
+    if request.app.state.task_manager.get_task(task_id) is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return request.app.state.orchestrator.event_bus.list_by_task(task_id)
+
+
+@router.get("/{task_id}/trace", response_model=list[DomainEvent])
+async def get_task_trace(task_id: str, request: Request) -> list[DomainEvent]:
+    """Compatibility-friendly trace resource backed by structured events."""
+    return await list_task_events(task_id, request)
