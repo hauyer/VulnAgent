@@ -8,9 +8,9 @@ from vulnagent.settings import get_settings
 
 
 def create_app() -> FastAPI:
-    """Create an isolated application with process-local V0.1 services."""
+    """Create an isolated application with process-local V0.2 services."""
     settings = get_settings()
-    application = FastAPI(title=settings.app_name, version="0.1.0")
+    application = FastAPI(title=settings.app_name, version="0.2.0")
     task_manager, evidence_store, orchestrator = build_mock_services()
     application.state.task_manager = task_manager
     application.state.evidence_store = evidence_store

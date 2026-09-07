@@ -9,7 +9,7 @@ from vulnagent.utils.ids import new_task_id
 
 
 class InMemoryTaskManager:
-    """Manage tasks in process memory for V0.1."""
+    """Manage tasks in process memory for local V0.2 execution."""
 
     def __init__(self, storage: InMemoryStorage[Task] | None = None) -> None:
         self._storage = storage or InMemoryStorage()

@@ -1,4 +1,4 @@
-"""Sequential pipeline stage execution."""
+"""Single-stage agent execution and context aggregation."""
 
 from dataclasses import dataclass
 
@@ -15,7 +15,7 @@ class PipelineStage:
 
 
 class Pipeline:
-    """Execute deterministic V0.1 stages and aggregate their results."""
+    """Execute one runtime-selected stage and aggregate its result."""
 
     async def execute_stage(self, stage: PipelineStage, context: AnalysisContext) -> AgentResult:
         return await stage.agent.run(context.task, context)
