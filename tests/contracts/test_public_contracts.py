@@ -1,4 +1,4 @@
-from vulnagent.contracts import BinaryAnalysisResult, Evidence, EvidenceType, FuzzResult, ProjectInput, ReportRequest, ReportResult, SourceAnalysisResult, Target, TargetType, Task, VerificationContext, VerificationResult, VulnerabilityCandidate, VulnerabilityStatus
+from vulnagent.contracts import BinaryAnalysisResult, Evidence, EvidenceType, EventType, FuzzResult, ProjectInput, ReportRequest, ReportResult, SourceAnalysisResult, Target, TargetType, Task, VerificationContext, VerificationResult, VulnerabilityCandidate, VulnerabilityStatus
 from vulnagent.analyzers.source.audit import MockSourceAuditor
 from vulnagent.analyzers.source.parser import MockSourceParser
 from vulnagent.verification.verifier import MockVerifier
@@ -26,3 +26,9 @@ async def test_report_consumes_only_public_contracts() -> None:
     task = Task(task_id="t", target=Target(target_id="x", path="x", target_type=TargetType.SOURCE))
     report = await MockReportGenerator().generate(ReportRequest(task=task))
     assert isinstance(report, ReportResult)
+
+
+def test_runtime_event_additions_preserve_domain_event_contract() -> None:
+    assert EventType.AGENT_ROUTED.value == "agent_routed"
+    assert EventType.AGENT_RETRY.value == "agent_retry"
+    assert EventType.REVIEW_COMPLETED.value == "review_completed"

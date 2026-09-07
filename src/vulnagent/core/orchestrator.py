@@ -1,40 +1,23 @@
-"""Top-level coordinator for the safe mock pipeline."""
+"""System-level task lifecycle owner for the V0.2 agent runtime."""
 
 import logging
-from dataclasses import dataclass
-
-from vulnagent.agents.base import BaseAgent
-from vulnagent.contracts import AnalysisContext, DomainEvent, EvidenceRepository, EventType, ModuleExecutionError, TargetType, TaskRepository, TaskStatus
-from vulnagent.core.pipeline import Pipeline, PipelineStage
+from vulnagent.agent_runtime import AgentRoute, AgentRuntime
+from vulnagent.contracts import AnalysisContext, DomainEvent, EvidenceRepository, EventType, ModuleExecutionError, TaskRepository, TaskStatus
 from vulnagent.core.state_manager import StateManager
 from vulnagent.core.event_bus import EventBus
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True)
-class AgentSuite:
-    """All replaceable agents required by the V0.1 pipeline."""
-
-    planner: BaseAgent
-    source_analysis: BaseAgent
-    binary_analysis: BaseAgent
-    fuzz: BaseAgent
-    verification: BaseAgent
-    reviewer: BaseAgent
-    report: BaseAgent
-
-
 class Orchestrator:
-    """Coordinate agents, state changes, and result persistence."""
+    """Own tasks and persistence while delegating agent flow to the runtime."""
 
-    def __init__(self, task_manager: TaskRepository, evidence_store: EvidenceRepository, agents: AgentSuite, event_bus: EventBus | None = None) -> None:
+    def __init__(self, task_manager: TaskRepository, evidence_store: EvidenceRepository, runtime: AgentRuntime, event_bus: EventBus | None = None) -> None:
         self.task_manager = task_manager
         self.evidence_store = evidence_store
-        self.pipeline = Pipeline()
         self.state_manager = StateManager()
         self.event_bus = event_bus or EventBus()
-        self.agents = agents
+        self.runtime = runtime
         self._contexts: dict[str, AnalysisContext] = {}
 
     async def run(self, task_id: str) -> AnalysisContext:
@@ -43,29 +26,14 @@ class Orchestrator:
             raise KeyError(f"Unknown task: {task_id}")
         context = AnalysisContext(task=task)
         self._publish(EventType.TASK_STARTED, task_id, "orchestrator")
-        analyzer = self.agents.binary_analysis if task.target.target_type is TargetType.BINARY else self.agents.source_analysis
-        stages = [
-            PipelineStage(TaskStatus.PLANNING, self.agents.planner),
-            PipelineStage(TaskStatus.ANALYZING, analyzer),
-            PipelineStage(TaskStatus.DYNAMIC_TESTING, self.agents.fuzz),
-            PipelineStage(TaskStatus.VERIFYING, self.agents.verification),
-            PipelineStage(TaskStatus.VERIFYING, self.agents.reviewer),
-            PipelineStage(TaskStatus.REPORTING, self.agents.report),
-        ]
         try:
             self._advance(context, TaskStatus.PROFILING)
-            for stage in stages:
-                if stage.status is not context.task.status:
-                    self._advance(context, stage.status)
-                self._publish(EventType.AGENT_STARTED, task_id, stage.agent.name)
-                result = await self.pipeline.execute_stage(stage, context)
-                if not result.success:
-                    raise ModuleExecutionError(result.error or f"Agent failed: {result.agent_name}")
-                self.pipeline.merge(context, result, replace_findings=result.agent_name == "verification")
-                for evidence in result.evidence:
-                    self.evidence_store.save(evidence)
-                    self._publish(EventType.EVIDENCE_ADDED, task_id, result.agent_name, {"evidence_id": evidence.evidence_id})
-                self._publish(EventType.AGENT_FINISHED, task_id, result.agent_name)
+            outcome = await self.runtime.run(task, context, on_route=lambda route: self._on_route(context, route))
+            if not context.reports:
+                raise ModuleExecutionError(f"Agent runtime ended without a report: {outcome.termination_reason}")
+            for evidence in context.evidence:
+                self.evidence_store.save(evidence)
+                self._publish(EventType.EVIDENCE_ADDED, task_id, evidence.created_by, {"evidence_id": evidence.evidence_id})
             self._advance(context, TaskStatus.COMPLETED)
         except Exception as exc:
             logger.exception("Pipeline failed for task %s", task_id)
@@ -81,6 +49,19 @@ class Orchestrator:
     def _advance(self, context: AnalysisContext, status: TaskStatus) -> None:
         self.state_manager.validate(context.task.status, status)
         context.task = self.task_manager.update_task(context.task.task_id, status=status)
+
+    def _on_route(self, context: AnalysisContext, route: AgentRoute) -> None:
+        status = {
+            AgentRoute.PLANNER: TaskStatus.PLANNING,
+            AgentRoute.SOURCE_ANALYSIS: TaskStatus.ANALYZING,
+            AgentRoute.BINARY_ANALYSIS: TaskStatus.ANALYZING,
+            AgentRoute.FUZZ: TaskStatus.DYNAMIC_TESTING,
+            AgentRoute.VERIFICATION: TaskStatus.VERIFYING,
+            AgentRoute.REVIEWER: TaskStatus.VERIFYING,
+            AgentRoute.REPORT: TaskStatus.REPORTING,
+        }[route]
+        if status is not context.task.status:
+            self._advance(context, status)
 
     def _publish(self, event_type: EventType, task_id: str, producer: str, payload: dict[str, object] | None = None) -> None:
         logger.info("orchestration event", extra={"task_id": task_id, "agent": producer, "module": "core.orchestrator", "event": event_type.value})

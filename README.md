@@ -1,17 +1,20 @@
 # VulnAgent
 
-VulnAgent 是基于大语言模型、多智能体协作、程序分析与独立验证的软件漏洞分析平台。本仓库当前实现 **V0.1 Architecture Skeleton**，目标是冻结公共协议并提供可运行、可测试、可扩展的单机工程基础。
+VulnAgent 是基于大语言模型、多智能体协作、程序分析与独立验证的软件漏洞分析平台。本仓库当前实现 **V0.2 Multi-Agent Architecture Foundation**：在 V0.1 公共协议之上提供动态、可追踪、有界的 Agent 工作流。
 
-> V0.1 的 Analyzer、Fuzz、Verification 和 Report 均为明确标记的 Mock 实现，不代表真实漏洞扫描能力，不执行未知二进制，也不包含漏洞利用逻辑。
+> V0.2 的 Analyzer、Fuzz、Verification 和 Report 仍为明确标记的 Mock 实现，不代表真实漏洞扫描能力，不执行未知二进制，也不包含漏洞利用逻辑。
 
-## Architecture Skeleton
+## Architecture
 
 ```text
-Task → Planner → Source/Binary Mock Analysis → Mock Fuzz
-     → Independent Mock Verification → Reviewer → Report → Completed
+API → TaskManager → Orchestrator → AgentRuntime (LangGraph)
+                                  → Planner / Supervisor
+                                  → Source or Binary Capability
+                                  → optional authorized Mock Fuzz
+                                  → Verification → Reviewer → Report
 ```
 
-所有 Agent 继承统一 `BaseAgent`，通过 `AgentMessage` 通信；所有分析结果使用 `VulnerabilityCandidate`；证据通过 `Evidence` 独立保存；只有 Verification 阶段能够改变候选漏洞状态。
+所有 Agent 继承统一 `BaseAgent`，通过 `AgentMessage` 通信；所有分析结果使用 `VulnerabilityCandidate`；证据通过 `Evidence` 独立保存；只有 Verification 边界能够产生最终状态。`RuntimeState` 只记录临时路由，业务数据始终位于 `AnalysisContext`。非法路由、重复路由和超出 `MAX_AGENT_STEPS` 都会确定性地进入 Report/Finish。
 
 ## Quick Start
 
@@ -51,12 +54,12 @@ uvicorn vulnagent.api.app:app --reload
 - `GET /tasks/{task_id}/events`
 - `GET /tasks/{task_id}/trace`
 
-以上接口同时提供 `/api` 前缀版本；无前缀路径为 V0.1 兼容入口。
+以上接口同时提供 `/api` 前缀版本；无前缀路径继续作为 V0.1 兼容入口。
 
 ## Project Structure
 
-核心代码位于 `src/vulnagent/`：`core` 负责任务和调度，`agents` 提供统一 Agent 框架，`analyzers`、`fuzz`、`verification`、`evidence`、`llm` 和 `report` 提供可替换能力，`api` 暴露 FastAPI 接口，`storage` 提供 V0.1 内存存储。
+核心代码位于 `src/vulnagent/`：`core` 负责任务生命周期和持久化协调，`agent_runtime` 负责 LangGraph、Supervisor、路由、策略与工具注册，`agents` 提供统一 Agent 决策适配层，`analyzers`、`fuzz`、`verification`、`evidence`、`llm` 和 `report` 提供可替换能力。
 
 跨模块代码必须从 `vulnagent.contracts` 导入公共 DTO 与 Protocol。`vulnagent.core.models` 仅为旧代码保留兼容导出。九人 Owner 边界和依赖规则见 `docs/01_architecture/module_boundaries.md`。
 
-设计约束与协议详见 `AGENTS.md` 和 `docs/`。
+V0.2 设计、边界与扩展点见 `docs/01_architecture/v0.2_architecture.md`。
