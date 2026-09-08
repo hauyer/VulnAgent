@@ -1,25 +1,78 @@
-"""Minimal synchronous event bus placeholder."""
+"""Process-local domain event bus."""
 
+import logging
 from collections import defaultdict
 from collections.abc import Callable
+
 from vulnagent.contracts import DomainEvent, EventType
+
+
+logger = logging.getLogger(__name__)
+
+
+EventCallback = Callable[[DomainEvent], None]
 
 
 class EventBus:
     """Publish process-local events without infrastructure dependencies."""
 
     def __init__(self) -> None:
-        self._subscribers: dict[EventType, list[Callable[[DomainEvent], None]]] = defaultdict(list)
-        self._history: dict[str, list[DomainEvent]] = defaultdict(list)
+        self._subscribers: dict[
+            EventType,
+            list[EventCallback],
+        ] = defaultdict(list)
 
-    def subscribe(self, event: EventType, callback: Callable[[DomainEvent], None]) -> None:
-        self._subscribers[event].append(callback)
+        self._history: dict[
+            str,
+            list[DomainEvent],
+        ] = defaultdict(list)
+
+    def subscribe(
+        self,
+        event_type: EventType,
+        callback: EventCallback,
+    ) -> None:
+        """Subscribe one callback to one event type."""
+
+        subscribers = self._subscribers[event_type]
+
+        # 防止同一个 callback 被重复注册。
+        if callback not in subscribers:
+            subscribers.append(callback)
 
     def publish(self, event: DomainEvent) -> None:
-        self._history[event.task_id].append(event)
-        for callback in self._subscribers[event.event_type]:
-            callback(event)
+        """Publish an event and isolate subscriber failures."""
 
-    def list_by_task(self, task_id: str) -> list[DomainEvent]:
-        """Return an isolated task event timeline."""
-        return list(self._history[task_id])
+        # 先记录事件。
+        # 即使某个 subscriber 出错，事件历史仍然存在。
+        self._history[event.task_id].append(event)
+
+        callbacks = list(
+            self._subscribers[event.event_type]
+        )
+
+        for callback in callbacks:
+            try:
+                callback(event)
+
+            except Exception:
+                # Event subscriber 属于旁路组件。
+                # 不允许它破坏任务主生命周期。
+                logger.exception(
+                    "Event subscriber failed",
+                    extra={
+                        "task_id": event.task_id,
+                        "event": event.event_type.value,
+                        "producer": event.producer,
+                    },
+                )
+
+    def list_by_task(
+        self,
+        task_id: str,
+    ) -> list[DomainEvent]:
+        """Return an isolated copy of a task event timeline."""
+
+        return list(
+            self._history.get(task_id, [])
+        )
