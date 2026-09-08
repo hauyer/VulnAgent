@@ -114,24 +114,217 @@ class AgentRuntime:
     def _build_graph(self, task: Task, context: AnalysisContext, on_route: RouteObserver | None):
         builder = StateGraph(RuntimeState)
 
-        async def supervise(state: RuntimeState) -> RuntimeState:
-            proposed = self.supervisor.decide(task, context, state)
-            decision = self.router.resolve(proposed.route, state["route_history"])
+        async def supervise(
+            state: RuntimeState,
+        ) -> RuntimeState:
             metadata = dict(state["runtime_metadata"])
+
+            # -------------------------------------------------
+            # 1. Agent failure can force the next route
+            # -------------------------------------------------
+
+            forced_reason = metadata.pop(
+                "force_fallback_reason",
+                None,
+            )
+
+            if forced_reason is not None:
+                fallback_route = (
+                    AgentRoute.FINISH
+                    if AgentRoute.REPORT.value
+                    in state["route_history"]
+                    else AgentRoute.REPORT
+                )
+
+                proposed = RouteDecision(
+                    route=fallback_route,
+                    reason=str(forced_reason),
+                    fallback_used=True,
+                )
+
+            else:
+                # ---------------------------------------------
+                # 2. Supervisor itself must not crash runtime
+                # ---------------------------------------------
+
+                try:
+                    proposed = self.supervisor.decide(
+                        task,
+                        context,
+                        state,
+                    )
+
+                except Exception as exc:
+                    fallback_route = (
+                        AgentRoute.FINISH
+                        if AgentRoute.REPORT.value
+                        in state["route_history"]
+                        else AgentRoute.REPORT
+                    )
+
+                    proposed = RouteDecision(
+                        route=fallback_route,
+                        reason=(
+                            "supervisor execution failed: "
+                            f"{type(exc).__name__}: {exc}"
+                        ),
+                        fallback_used=True,
+                    )
+
+            # -------------------------------------------------
+            # 3. Runtime independently enforces retry policy
+            # -------------------------------------------------
+
+            retry_requested = bool(
+                proposed.metadata.get(
+                    "retry",
+                    False,
+                )
+            )
+
+            retry_route = proposed.route in {
+                AgentRoute.SOURCE_ANALYSIS,
+                AgentRoute.BINARY_ANALYSIS,
+            }
+
+            retry_from_verification = (
+                state["current_agent"]
+                == AgentRoute.VERIFICATION.value
+            )
+
+            actual_retry_request = (
+                retry_requested
+                and retry_route
+                and retry_from_verification
+            )
+
+            retry_attempts = int(
+                metadata.get(
+                    "analysis_retries",
+                    0,
+                )
+            )
+
+            # Even a custom/injected Supervisor cannot exceed
+            # RuntimePolicy.max_analysis_retries.
+            if (
+                actual_retry_request
+                and retry_attempts
+                >= self.policy.max_analysis_retries
+            ):
+                proposed = RouteDecision(
+                    route=AgentRoute.REVIEWER,
+                    reason=(
+                        "runtime analysis retry limit reached; "
+                        "continue to reviewer"
+                    ),
+                    metadata={
+                        "retry_exhausted": True,
+                    },
+                )
+
+                actual_retry_request = False
+
+            # -------------------------------------------------
+            # 4. Router is the final route authority
+            # -------------------------------------------------
+
+            routed = self.router.resolve(
+                proposed.route,
+                state["route_history"],
+            )
+
+            # When Router accepts the proposed route, retain
+            # Supervisor's semantic reason instead of replacing
+            # it with the generic "validated supervisor route".
+            if (
+                routed.route == proposed.route
+                and not routed.fallback_used
+            ):
+                decision = RouteDecision(
+                    route=routed.route,
+                    reason=proposed.reason,
+                    fallback_used=proposed.fallback_used,
+                    metadata=dict(proposed.metadata),
+                )
+            else:
+                decision = routed
+
+            # -------------------------------------------------
+            # 5. Count retry only after Router accepted it
+            # -------------------------------------------------
+
+            retry_executed = (
+                actual_retry_request
+                and decision.route == proposed.route
+                and not decision.fallback_used
+            )
+
+            if retry_executed:
+                retry_attempts += 1
+
+                metadata[
+                    "analysis_retries"
+                ] = retry_attempts
+
+                self._emit(
+                    EventType.AGENT_RETRY,
+                    task.task_id,
+                    "supervisor",
+                    {
+                        "route": decision.route.value,
+                        "attempt": retry_attempts,
+                        "max_attempts":
+                            self.policy.max_analysis_retries,
+                    },
+                )
+
+            if proposed.metadata.get(
+                "retry_exhausted",
+                False,
+            ):
+                metadata[
+                    "analysis_retry_exhausted"
+                ] = True
+
+            # -------------------------------------------------
+            # 6. Record fallback / termination information
+            # -------------------------------------------------
+
             if decision.fallback_used:
                 metadata["fallback_used"] = True
-                metadata["termination_reason"] = decision.reason
+                metadata[
+                    "termination_reason"
+                ] = decision.reason
+
                 if "step limit" in decision.reason:
-                    metadata["step_limit_reached"] = True
+                    metadata[
+                        "step_limit_reached"
+                    ] = True
+
+            # -------------------------------------------------
+            # 7. Structured route trace
+            # -------------------------------------------------
+
             self._emit(
                 EventType.AGENT_ROUTED,
                 task.task_id,
                 "supervisor",
-                {"route": decision.route.value, "reason": decision.reason, "fallback_used": decision.fallback_used},
+                {
+                    "route": decision.route.value,
+                    "reason": decision.reason,
+                    "fallback_used":
+                        decision.fallback_used,
+                },
             )
-            if proposed.metadata.get("retry"):
-                self._emit(EventType.AGENT_RETRY, task.task_id, "supervisor", {"route": decision.route.value})
-            return {**state, "next_agent": decision.route.value, "runtime_metadata": metadata}
+
+            return {
+                **state,
+                "next_agent":
+                    decision.route.value,
+                "runtime_metadata":
+                    metadata,
+            }
 
         builder.add_node("supervisor", supervise)
         for route in AgentRoute:
@@ -170,18 +363,68 @@ class AgentRuntime:
                     raise ModuleExecutionError(result.error or f"Agent failed: {result.agent_name}")
                 self._validate_finding_authority(route, result, context)
             except Exception as exc:
-                context.messages.append(
-                    AgentMessage(
-                        message_id=new_message_id(),
-                        task_id=task.task_id,
-                        sender=agent.name,
-                        receiver="orchestrator",
-                        message_type=AgentMessageType.ERROR,
-                        payload={"route": route.value, "error": str(exc)},
-                    )
+                error_message = AgentMessage(
+                    message_id=new_message_id(),
+                    task_id=task.task_id,
+                    sender=agent.name,
+                    receiver="orchestrator",
+                    message_type=AgentMessageType.ERROR,
+                    payload={
+                        "route": route.value,
+                        "error": str(exc),
+                    },
                 )
-                self._emit(EventType.AGENT_FINISHED, task.task_id, agent.name, {"route": route.value, "success": False, "error": str(exc)})
-                raise
+
+                context.messages.append(
+                    error_message
+                )
+
+                self._emit(
+                    EventType.AGENT_FINISHED,
+                    task.task_id,
+                    agent.name,
+                    {
+                        "route": route.value,
+                        "success": False,
+                        "error": str(exc),
+                    },
+                )
+
+                history = [
+                    *state["route_history"],
+                    route.value,
+                ]
+
+                messages = [
+                    *state["messages"],
+                    request,
+                    error_message,
+                ]
+
+                metadata = dict(
+                    state["runtime_metadata"]
+                )
+
+                metadata["force_fallback_reason"] = (
+                    "agent execution failed: "
+                    f"{route.value}"
+                )
+
+                metadata["last_agent_error"] = {
+                    "route": route.value,
+                    "agent": agent.name,
+                    "error": str(exc),
+                }
+
+                return {
+                    **state,
+                    "current_agent": route.value,
+                    "next_agent": None,
+                    "step_count": state["step_count"] + 1,
+                    "route_history": history,
+                    "messages": messages,
+                    "runtime_metadata": metadata,
+                }
             self.pipeline.merge(context, result, replace_findings=route is AgentRoute.VERIFICATION)
             self._emit_result_events(task.task_id, route, result)
             self._emit(EventType.AGENT_FINISHED, task.task_id, agent.name, {"route": route.value, "success": True})
