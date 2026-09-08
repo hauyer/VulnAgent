@@ -2,6 +2,17 @@
 
 输入 `BinaryAnalysisRequest`，输出 `BinaryAnalysisResult`。负责 PE/ELF、元数据、字符串、导入、函数与基础 CFG。外部工具必须经 Adapter；禁止承担复杂混淆/业务逻辑识别或漏洞确认。测试入口：`pytest tests/contracts tests/binary_reverse`（目录存在时）。
 
+## P4 扩展：受控工具、启发式线索与工件
+
+在不修改公共 `contracts/binary.py` 的前提下，P4 在 `binary/common` 和本目录提供可独立使用的补充 API：
+
+- `inspect_packing_signals(result)` 只消费 `BinaryAnalysisResult` 的已提取事实，检查有界的区段熵、常见壳区段名、导入数量和入口点位置。它输出优先级线索，不作“已加壳/已混淆”结论，也不重新读取或执行目标。
+- `UpxAdapter.inspect(path, authorized=True)` 仅在调用方显式授权后，以 `upx -l` 检查元数据；`UpxAdapter.unpack(..., output_dir=..., authorized=True)` 使用 `upx -d -o OUTPUT INPUT` 写入新建私有目录，绝不覆盖原输入。两者均使用参数列表、`shell=False` 和超时；脱壳输出必须是受限大小的普通文件，并记录 SHA-256。缺工具、超时、非零返回或输出校验失败均变为 JSON 可序列化结果。
+- `Radare2Adapter.inspect(path, authorized=True)` 为 `aflj`、`agfj` 和（可选）每个数值函数地址的内置 `pdc` 分别启动受控 `r2 -q -c` 调用，避免把组合命令的输出误当 NUL 分隔结果。它将 CFG 标准化为**基本块地址 → 后继基本块地址**的邻接表，函数符号入口不会伪造为 CFG 节点；伪代码仅来自 r2 内置 pdc，不等同于 Ghidra。工具缺失、错误、超时、坏 JSON 或单个 pdc 失败均会形成受限、JSON 可序列化结果。
+- `BinaryArtifactStore(root)` 将 `BinaryAnalysisResult` 和可选工具事实以原子、严格 JSON（拒绝 NaN/Infinity）写入，记录工具日志、版本调用结果和输入指纹等附加事实，并维护同目录 `index.json`。工件名含 task/target 元组的 SHA-256 截断值以避免清理后碰撞；索引条目会严格验证。进程内共享锁避免同一 Python 进程的并发写入丢失条目；当前实现明确采用单进程写者约定，尚未提供跨进程锁。工件中不得传入凭据；不可 JSON 序列化的补充数据会被拒绝。
+
+静态解析器现在还将 `packing_signals` 写入 `metadata`。静态解析器不反汇编字节，因此 `result.cfg` 始终为 `{}`；不能从 ELF 符号或 PE/ELF 结构条目伪造 CFG。
+
 ## T1：静态解析实现
 
 `StaticBinaryReverseAnalyzer` 实现已有 `BinaryAnalyzer` 协议，只读取本地普通文件，

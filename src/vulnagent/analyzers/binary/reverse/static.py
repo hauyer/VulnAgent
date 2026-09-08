@@ -8,6 +8,7 @@ import stat
 from pathlib import Path
 from typing import Any
 
+from vulnagent.analyzers.binary.common import inspect_packing_signals
 from vulnagent.contracts import (
     BinaryAnalysisRequest,
     BinaryAnalysisResult,
@@ -80,9 +81,10 @@ class StaticBinaryReverseAnalyzer:
                 "sections": True,
                 "imports_exports": "PE normal directories / ELF section-backed symbols",
                 "function_discovery": "ELF declared symbols only",
-                "cfg": False,
+                "cfg": "not available from structural parsing; static result.cfg is empty",
                 "decompilation": False,
                 "unpacking": False,
+                "external_adapters": "optional and explicitly authorized",
             },
         }
         logger.debug(
@@ -90,7 +92,7 @@ class StaticBinaryReverseAnalyzer:
             request.target_id,
             parsed.file_format,
         )
-        return BinaryAnalysisResult(
+        result = BinaryAnalysisResult(
             task_id=request.task_id,
             target_id=request.target_id,
             path=request.path,
@@ -99,9 +101,11 @@ class StaticBinaryReverseAnalyzer:
             strings=strings,
             imports=parsed.imports,
             functions=parsed.functions,
-            cfg={},
+            # Structural parsing does not decode instructions, so it must not infer CFG.
             metadata=metadata,
         )
+        result.metadata["packing_signals"] = inspect_packing_signals(result)
+        return result
 
     def _strings(self, data: bytes) -> tuple[list[str], list[dict[str, Any]], bool]:
         limits = self.limits

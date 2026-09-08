@@ -185,6 +185,7 @@ async def test_pe_facts_and_contract_round_trip(tmp_path: Path, bits: int) -> No
     assert result.metadata["exports"][0]["names"] == ["export"]
     assert result.metadata["exports"][1]["forwarder"] == "OTHER.Sleep"
     assert result.functions == [] and result.cfg == {}
+    assert result.metadata["packing_signals"]["inspector"] == "bounded-packing-signals"
     assert result.metadata["executed"] is False and result.metadata["mock"] is False
     assert BinaryAnalysisResult.model_validate_json(result.model_dump_json()) == result
     assert Path(result.path).read_bytes() == data
@@ -206,7 +207,8 @@ async def test_elf_endianness_symbols_and_nobits(
     assert result.functions[0]["address"] == 0x401000
     bss = result.metadata["sections"][5]
     assert bss["name"] == ".bss" and bss["size"] == 0 and bss["virtual_size"] == 4096
-    assert result.cfg == {} and result.metadata["executed"] is False
+    assert result.cfg == {}
+    assert result.metadata["executed"] is False
     assert BinaryAnalysisResult.model_validate_json(result.model_dump_json()) == result
 
 
