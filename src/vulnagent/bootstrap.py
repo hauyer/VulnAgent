@@ -22,6 +22,9 @@ from vulnagent.agent_runtime import (
     ToolRegistry,
     ToolSpec,
 )
+from vulnagent.agent_runtime.errors import (
+    ToolRegistrationError,
+)
 from vulnagent.agents import (
     BinaryAnalysisAgent,
     FuzzAgent,
@@ -167,7 +170,32 @@ def build_tool_registry(
     )
 
     return registry
+def validate_tool_registry(
+    registry: ToolRegistry,
+) -> None:
+    """Ensure all mandatory VulnAgent capabilities are registered.
 
+    ``ToolRegistry`` may be supplied externally through dependency
+    injection.  A custom registry must therefore satisfy the same
+    minimum logical capability contract as the default registry.
+
+    Validation happens during application composition so missing tools
+    cannot survive until runtime execution.
+    """
+
+    missing = [
+        capability.value
+        for capability in CapabilityName
+        if not registry.contains(
+            capability.value
+        )
+    ]
+
+    if missing:
+        raise ToolRegistrationError(
+            "Missing required application tools: "
+            + ", ".join(missing)
+        )
 
 def build_agent_registry(
     capabilities: CapabilityBundle,
@@ -292,6 +320,17 @@ def build_application(
         )
     )
 
+    validate_tool_registry(
+        resolved_tool_registry
+    )
+
+    resolved_agent_registry = (
+        agent_registry
+        if agent_registry is not None
+        else build_agent_registry(
+            capabilities
+        )
+    )
     resolved_agent_registry = (
         agent_registry
         if agent_registry is not None

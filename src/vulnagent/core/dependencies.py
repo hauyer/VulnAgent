@@ -8,6 +8,7 @@ provider implementation may be imported here.
 """
 
 from dataclasses import dataclass
+from inspect import iscoroutinefunction
 from typing import Any
 
 from vulnagent.contracts import (
@@ -46,56 +47,67 @@ class CapabilityBundle:
     report_generator: ReportGenerator
 
     def __post_init__(self) -> None:
-        """Perform small structural checks on injected capabilities.
+        """Fail fast when an injected capability is structurally invalid.
 
-        Existing Contracts are intentionally not changed merely to make
-        them runtime-checkable.  Bootstrap instead performs explicit
-        fail-fast checks for required async operations.
+        VulnAgent capability Protocol methods are asynchronous.
+
+        Merely checking ``callable()`` is insufficient because a
+        synchronous implementation would pass bootstrap validation and
+        fail only later when an Agent tries to ``await`` it.
+
+        Therefore every required operation is checked both for
+        callability and coroutine-function semantics.
         """
 
-        self._require_callable(
+        self._require_async_callable(
             self.source_parser,
             "analyze",
             "source_parser",
         )
 
-        self._require_callable(
+        self._require_async_callable(
             self.source_auditor,
             "audit",
             "source_auditor",
         )
 
-        self._require_callable(
+        self._require_async_callable(
             self.binary_analyzer,
             "analyze",
             "binary_analyzer",
         )
 
-        self._require_callable(
+        self._require_async_callable(
             self.fuzz_engine,
             "run",
             "fuzz_engine",
         )
 
-        self._require_callable(
+        self._require_async_callable(
             self.verifier,
             "verify",
             "verifier",
         )
 
-        self._require_callable(
+        self._require_async_callable(
             self.report_generator,
             "generate",
             "report_generator",
         )
 
     @staticmethod
-    def _require_callable(
+    def _require_async_callable(
         dependency: Any,
         method_name: str,
         dependency_name: str,
     ) -> None:
-        """Ensure one injected capability exposes its required method."""
+        """Validate one asynchronous capability operation.
+
+        Raises:
+            TypeError:
+                If the dependency does not expose the required callable
+                method or if the method is not asynchronous.
+        """
 
         method = getattr(
             dependency,
@@ -108,4 +120,11 @@ class CapabilityBundle:
                 "Invalid injected capability "
                 f"{dependency_name!r}: "
                 f"missing callable {method_name!r}"
+            )
+
+        if not iscoroutinefunction(method):
+            raise TypeError(
+                "Invalid injected capability "
+                f"{dependency_name!r}: "
+                f"method {method_name!r} must be async"
             )
