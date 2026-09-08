@@ -1,0 +1,1605 @@
+[1mdiff --git a/src/vulnagent/agent_runtime/__init__.py b/src/vulnagent/agent_runtime/__init__.py[m
+[1mindex 996363f..c1a7b77 100644[m
+[1m--- a/src/vulnagent/agent_runtime/__init__.py[m
+[1m+++ b/src/vulnagent/agent_runtime/__init__.py[m
+[36m@@ -1,24 +1,38 @@[m
+ """Bounded, provider-neutral agent workflow runtime."""[m
+ [m
+[32m+[m[32mfrom .capability_names import CapabilityName[m
+ from .policies import RuntimePolicy[m
+[31m-from .router import AgentRoute, AgentRouter, RouteDecision[m
+[31m-from .runtime import AgentRuntime, AgentSuite, RuntimeResult[m
+[32m+[m[32mfrom .router import ([m
+[32m+[m[32m    AgentRoute,[m
+[32m+[m[32m    AgentRouter,[m
+[32m+[m[32m    RouteDecision,[m
+[32m+[m[32m)[m
+[32m+[m[32mfrom .runtime import ([m
+[32m+[m[32m    AgentRuntime,[m
+[32m+[m[32m    AgentSuite,[m
+[32m+[m[32m    RuntimeResult,[m
+[32m+[m[32m)[m
+ from .state import RuntimeState[m
+ from .supervisor import Supervisor[m
+[31m-from .tool_registry import ToolRegistry, ToolSpec[m
+ from .tool_enabled import ToolEnabledAgent[m
+[32m+[m[32mfrom .tool_registry import ([m
+[32m+[m[32m    ToolRegistry,[m
+[32m+[m[32m    ToolSpec,[m
+[32m+[m[32m)[m
+[32m+[m
+ [m
+ __all__ = [[m
+     "AgentRoute",[m
+     "AgentRouter",[m
+     "AgentRuntime",[m
+     "AgentSuite",[m
+[32m+[m[32m    "CapabilityName",[m
+     "RouteDecision",[m
+     "RuntimePolicy",[m
+     "RuntimeResult",[m
+     "RuntimeState",[m
+     "Supervisor",[m
+[32m+[m[32m    "ToolEnabledAgent",[m
+     "ToolRegistry",[m
+     "ToolSpec",[m
+[31m-    "ToolEnabledAgent",[m
+[31m-][m
+[32m+[m[32m][m
+\ No newline at end of file[m
+[1mdiff --git a/src/vulnagent/agent_runtime/capability_names.py b/src/vulnagent/agent_runtime/capability_names.py[m
+[1mnew file mode 100644[m
+[1mindex 0000000..dcdcb10[m
+[1m--- /dev/null[m
+[1m+++ b/src/vulnagent/agent_runtime/capability_names.py[m
+[36m@@ -0,0 +1,30 @@[m
+[32m+[m[32m"""Canonical provider-neutral capability names for VulnAgent.[m
+[32m+[m
+[32m+[m[32mThe values in this module describe logical system capabilities rather[m
+[32m+[m[32mthan concrete implementations or vendors.[m
+[32m+[m
+[32m+[m[32mExamples:[m
+[32m+[m[32m    source.parse[m
+[32m+[m[32m    binary.inspect[m
+[32m+[m[32m    verification.verify[m
+[32m+[m
+[32m+[m[32mConcrete implementations are wired only by the application composition[m
+[32m+[m[32mroot in ``bootstrap.py``.[m
+[32m+[m[32m"""[m
+[32m+[m
+[32m+[m[32mfrom enum import StrEnum[m
+[32m+[m
+[32m+[m
+[32m+[m[32mclass CapabilityName(StrEnum):[m
+[32m+[m[32m    """Stable logical capability identifiers."""[m
+[32m+[m
+[32m+[m[32m    SOURCE_PARSE = "source.parse"[m
+[32m+[m[32m    SOURCE_AUDIT = "source.audit"[m
+[32m+[m
+[32m+[m[32m    BINARY_INSPECT = "binary.inspect"[m
+[32m+[m
+[32m+[m[32m    FUZZ_EXECUTE = "fuzz.execute"[m
+[32m+[m
+[32m+[m[32m    VERIFICATION_VERIFY = "verification.verify"[m
+[32m+[m
+[32m+[m[32m    REPORT_GENERATE = "report.generate"[m
+\ No newline at end of file[m
+[1mdiff --git a/src/vulnagent/agent_runtime/tool_registry.py b/src/vulnagent/agent_runtime/tool_registry.py[m
+[1mindex f550cf9..a445e43 100644[m
+[1m--- a/src/vulnagent/agent_runtime/tool_registry.py[m
+[1m+++ b/src/vulnagent/agent_runtime/tool_registry.py[m
+[36m@@ -1,17 +1,34 @@[m
+[31m-"""Registry of logical capability tools exposed to tool-enabled agents."""[m
+[32m+[m[32m"""Registry of provider-neutral logical capabilities.[m
+ [m
+[31m-from collections.abc import Awaitable, Callable[m
+[32m+[m[32m``ToolRegistry`` is the single runtime registry for logical tools and[m
+[32m+[m[32mcapabilities.[m
+[32m+[m
+[32m+[m[32mIt stores stable logical names such as ``source.parse`` instead of[m
+[32m+[m[32mconcrete implementation names such as ``tree_sitter_python`` or[m
+[32m+[m[32m``semgrep``.[m
+[32m+[m
+[32m+[m[32mConcrete implementations must be injected by ``bootstrap.py``.[m
+[32m+[m[32m"""[m
+[32m+[m
+[32m+[m[32mfrom collections.abc import Awaitable, Callable, Iterable[m
+ from dataclasses import dataclass[m
+[32m+[m[32mimport re[m
+ from typing import Any[m
+ [m
+ from .errors import ToolRegistrationError[m
+ [m
+[32m+[m
+ ToolCallable = Callable[..., Awaitable[Any]][m
+ [m
+ [m
+[32m+[m[32m_LOGICAL_CAPABILITY_PATTERN = re.compile([m
+[32m+[m[32m    r"^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$"[m
+[32m+[m[32m)[m
+[32m+[m
+[32m+[m
+ @dataclass(frozen=True, slots=True)[m
+ class ToolSpec:[m
+[31m-    """Metadata and adapter for one logical, provider-neutral capability."""[m
+[32m+[m[32m    """Metadata and adapter for one logical capability."""[m
+ [m
+     name: str[m
+     description: str[m
+[36m@@ -19,26 +36,175 @@[m [mclass ToolSpec:[m
+     owner: str[m
+     capability_type: str[m
+ [m
+[32m+[m[32m    def __post_init__(self) -> None:[m
+[32m+[m[32m        """Validate capability metadata during application bootstrap."""[m
+[32m+[m
+[32m+[m[32m        if not isinstance(self.name, str):[m
+[32m+[m[32m            raise ToolRegistrationError([m
+[32m+[m[32m                "Tool name must be a string"[m
+[32m+[m[32m            )[m
+[32m+[m
+[32m+[m[32m        if not _LOGICAL_CAPABILITY_PATTERN.fullmatch([m
+[32m+[m[32m            self.name[m
+[32m+[m[32m        ):[m
+[32m+[m[32m            raise ToolRegistrationError([m
+[32m+[m[32m                "Invalid logical tool name: "[m
+[32m+[m[32m                f"{self.name!r}. "[m
+[32m+[m[32m                "Expected a name such as 'source.parse'."[m
+[32m+[m[32m            )[m
+[32m+[m
+[32m+[m[32m        if not isinstance(self.description, str):[m
+[32m+[m[32m            raise ToolRegistrationError([m
+[32m+[m[32m                f"Tool description must be a string: {self.name}"[m
+[32m+[m[32m            )[m
+[32m+[m
+[32m+[m[32m        if not self.description.strip():[m
+[32m+[m[32m            raise ToolRegistrationError([m
+[32m+[m[32m                f"Tool description cannot be empty: {self.name}"[m
+[32m+[m[32m            )[m
+[32m+[m
+[32m+[m[32m        if not callable(self.adapter):[m
+[32m+[m[32m            raise ToolRegistrationError([m
+[32m+[m[32m                f"Tool adapter is not callable: {self.name}"[m
+[32m+[m[32m            )[m
+[32m+[m
+[32m+[m[32m        if not isinstance(self.owner, str) or not self.owner.strip():[m
+[32m+[m[32m            raise ToolRegistrationError([m
+[32m+[m[32m                f"Tool owner cannot be empty: {self.name}"[m
+[32m+[m[32m            )[m
+[32m+[m
+[32m+[m[32m        if ([m
+[32m+[m[32m            not isinstance(self.capability_type, str)[m
+[32m+[m[32m            or not self.capability_type.strip()[m
+[32m+[m[32m        ):[m
+[32m+[m[32m            raise ToolRegistrationError([m
+[32m+[m[32m                "Tool capability_type cannot be empty: "[m
+[32m+[m[32m                f"{self.name}"[m
+[32m+[m[32m            )[m
+[32m+[m
+ [m
+ class ToolRegistry:[m
+[31m-    """Resolve logical tools without exposing concrete vendors to agents."""[m
+[32m+[m[32m    """Resolve logical capabilities without exposing concrete providers."""[m
+ [m
+     def __init__(self) -> None:[m
+         self._tools: dict[str, ToolSpec] = {}[m
+ [m
+[31m-    def register(self, tool: ToolSpec) -> None:[m
+[31m-        """Register a uniquely named logical tool."""[m
+[32m+[m[32m    def register([m
+[32m+[m[32m        self,[m
+[32m+[m[32m        tool: ToolSpec,[m
+[32m+[m[32m    ) -> None:[m
+[32m+[m[32m        """Register one uniquely named logical capability."""[m
+[32m+[m
+         if tool.name in self._tools:[m
+[31m-            raise ToolRegistrationError(f"Tool already registered: {tool.name}")[m
+[32m+[m[32m            raise ToolRegistrationError([m
+[32m+[m[32m                f"Tool already registered: {tool.name}"[m
+[32m+[m[32m            )[m
+[32m+[m
+         self._tools[tool.name] = tool[m
+ [m
+[31m-    def get(self, name: str) -> ToolSpec:[m
+[31m-        """Resolve a tool or raise a normalized runtime error."""[m
+[32m+[m[32m    def register_many([m
+[32m+[m[32m        self,[m
+[32m+[m[32m        tools: Iterable[ToolSpec],[m
+[32m+[m[32m    ) -> None:[m
+[32m+[m[32m        """Atomically register several logical capabilities.[m
+[32m+[m
+[32m+[m[32m        The whole batch is checked before the internal mapping is[m
+[32m+[m[32m        modified, preventing partially registered application state.[m
+[32m+[m[32m        """[m
+[32m+[m
+[32m+[m[32m        pending = list(tools)[m
+[32m+[m
+[32m+[m[32m        existing_names = set(self._tools)[m
+[32m+[m[32m        batch_names: set[str] = set()[m
+[32m+[m
+[32m+[m[32m        for tool in pending:[m
+[32m+[m[32m            if tool.name in existing_names:[m
+[32m+[m[32m                raise ToolRegistrationError([m
+[32m+[m[32m                    f"Tool already registered: {tool.name}"[m
+[32m+[m[32m                )[m
+[32m+[m
+[32m+[m[32m            if tool.name in batch_names:[m
+[32m+[m[32m                raise ToolRegistrationError([m
+[32m+[m[32m                    "Duplicate tool in registration batch: "[m
+[32m+[m[32m                    f"{tool.name}"[m
+[32m+[m[32m                )[m
+[32m+[m
+[32m+[m[32m            batch_names.add(tool.name)[m
+[32m+[m
+[32m+[m[32m        for tool in pending:[m
+[32m+[m[32m            self._tools[tool.name] = tool[m
+[32m+[m
+[32m+[m[32m    def get([m
+[32m+[m[32m        self,[m
+[32m+[m[32m        name: str,[m
+[32m+[m[32m    ) -> ToolSpec:[m
+[32m+[m[32m        """Resolve one registered logical capability."""[m
+[32m+[m
+         try:[m
+             return self._tools[name][m
+[32m+[m
+         except KeyError as exc:[m
+[31m-            raise ToolRegistrationError(f"Unknown tool: {name}") from exc[m
+[32m+[m[32m            raise ToolRegistrationError([m
+[32m+[m[32m                f"Unknown tool: {name}"[m
+[32m+[m[32m            ) from exc[m
+[32m+[m
+[32m+[m[32m    def require([m
+[32m+[m[32m        self,[m
+[32m+[m[32m        names: Iterable[str],[m
+[32m+[m[32m    ) -> list[ToolSpec]:[m
+[32m+[m[32m        """Resolve all required logical capabilities.[m
+[32m+[m
+[32m+[m[32m        Raises immediately when any capability is unavailable.[m
+[32m+[m[32m        """[m
+[32m+[m
+[32m+[m[32m        return [[m
+[32m+[m[32m            self.get(name)[m
+[32m+[m[32m            for name in names[m
+[32m+[m[32m        ][m
+[32m+[m
+[32m+[m[32m    def contains([m
+[32m+[m[32m        self,[m
+[32m+[m[32m        name: str,[m
+[32m+[m[32m    ) -> bool:[m
+[32m+[m[32m        """Return whether the capability is registered."""[m
+[32m+[m
+[32m+[m[32m        return name in self._tools[m
+[32m+[m
+[32m+[m[32m    def names([m
+[32m+[m[32m        self,[m
+[32m+[m[32m    ) -> list[str]:[m
+[32m+[m[32m        """Return logical capability names in registration order."""[m
+[32m+[m
+[32m+[m[32m        return list(self._tools)[m
+[32m+[m
+[32m+[m[32m    def list_tools([m
+[32m+[m[32m        self,[m
+[32m+[m[32m    ) -> list[ToolSpec]:[m
+[32m+[m[32m        """Return registered ToolSpec objects in registration order."""[m
+ [m
+[31m-    def list_tools(self) -> list[ToolSpec]:[m
+[31m-        """Return tools in deterministic registration order."""[m
+         return list(self._tools.values())[m
+[32m+[m
+[32m+[m[32m    def as_mapping([m
+[32m+[m[32m        self,[m
+[32m+[m[32m    ) -> dict[str, ToolSpec]:[m
+[32m+[m[32m        """Return a defensive copy of the internal registry."""[m
+[32m+[m
+[32m+[m[32m        return dict(self._tools)[m
+[32m+[m
+[32m+[m[32m    def __contains__([m
+[32m+[m[32m        self,[m
+[32m+[m[32m        name: object,[m
+[32m+[m[32m    ) -> bool:[m
+[32m+[m[32m        """Support ``name in registry``."""[m
+[32m+[m
+[32m+[m[32m        return ([m
+[32m+[m[32m            isinstance(name, str)[m
+[32m+[m[32m            and name in self._tools[m
+[32m+[m[32m        )[m
+[32m+[m
+[32m+[m[32m    def __len__([m
+[32m+[m[32m        self,[m
+[32m+[m[32m    ) -> int:[m
+[32m+[m[32m        """Return the number of registered capabilities."""[m
+[32m+[m
+[32m+[m[32m        return len(self._tools)[m
+\ No newline at end of file[m
+[1mdiff --git a/src/vulnagent/agents/registry.py b/src/vulnagent/agents/registry.py[m
+[1mindex 70a3469..180a7eb 100644[m
+[1m--- a/src/vulnagent/agents/registry.py[m
+[1m+++ b/src/vulnagent/agents/registry.py[m
+[36m@@ -1,25 +1,210 @@[m
+[31m-"""Simple in-process agent registry."""[m
+[32m+[m[32m"""In-process registry for injected VulnAgent agents.[m
+[32m+[m
+[32m+[m[32mThe registry intentionally separates the stable runtime route key from[m
+[32m+[m[32m``BaseAgent.name``.[m
+[32m+[m
+[32m+[m[32mExample:[m
+[32m+[m
+[32m+[m[32m    runtime key:[m
+[32m+[m[32m        source_analysis[m
+[32m+[m
+[32m+[m[32m    agent identity:[m
+[32m+[m[32m        source_audit[m
+[32m+[m
+[32m+[m[32mAgentRuntime routes by the stable workflow key while Agent.name remains[m
+[32m+[m[32mthe identity used in AgentMessage, DomainEvent and trace output.[m
+[32m+[m[32m"""[m
+[32m+[m
+[32m+[m[32mfrom collections.abc import Iterable, Mapping[m
+ [m
+ from vulnagent.agents.base import BaseAgent[m
+ [m
+ [m
+ class AgentRegistry:[m
+[31m-    """Register and retrieve agents by unique name."""[m
+[32m+[m[32m    """Register and resolve agents using stable logical runtime keys."""[m
+ [m
+     def __init__(self) -> None:[m
+         self._agents: dict[str, BaseAgent] = {}[m
+ [m
+[31m-    def register(self, agent: BaseAgent) -> None:[m
+[31m-        if agent.name in self._agents:[m
+[31m-            raise ValueError(f"Agent already registered: {agent.name}")[m
+[31m-        self._agents[agent.name] = agent[m
+[32m+[m[32m    def register([m
+[32m+[m[32m        self,[m
+[32m+[m[32m        agent: BaseAgent,[m
+[32m+[m[32m        *,[m
+[32m+[m[32m        key: str | None = None,[m
+[32m+[m[32m    ) -> None:[m
+[32m+[m[32m        """Register one agent.[m
+[32m+[m
+[32m+[m[32m        Args:[m
+[32m+[m[32m            agent:[m
+[32m+[m[32m                Concrete BaseAgent implementation.[m
+[32m+[m
+[32m+[m[32m            key:[m
+[32m+[m[32m                Optional logical runtime key.  If omitted, ``agent.name``[m
+[32m+[m[32m                is used for backward compatibility.[m
+[32m+[m[32m        """[m
+[32m+[m
+[32m+[m[32m        resolved_key = self._resolve_key([m
+[32m+[m[32m            agent,[m
+[32m+[m[32m            key,[m
+[32m+[m[32m        )[m
+[32m+[m
+[32m+[m[32m        if resolved_key in self._agents:[m
+[32m+[m[32m            raise ValueError([m
+[32m+[m[32m                f"Agent already registered: {resolved_key}"[m
+[32m+[m[32m            )[m
+[32m+[m
+[32m+[m[32m        self._agents[resolved_key] = agent[m
+[32m+[m
+[32m+[m[32m    def register_many([m
+[32m+[m[32m        self,[m
+[32m+[m[32m        agents: Mapping[str, BaseAgent] | Iterable[BaseAgent],[m
+[32m+[m[32m    ) -> None:[m
+[32m+[m[32m        """Atomically register several agents.[m
+[32m+[m
+[32m+[m[32m        Mapping form:[m
+[32m+[m
+[32m+[m[32m            {[m
+[32m+[m[32m                "source_analysis": source_agent,[m
+[32m+[m[32m                "verification": verification_agent,[m
+[32m+[m[32m            }[m
+[32m+[m
+[32m+[m[32m        Iterable form preserves the previous behaviour and uses each[m
+[32m+[m[32m        ``agent.name`` as the key.[m
+[32m+[m[32m        """[m
+[32m+[m
+[32m+[m[32m        if isinstance(agents, Mapping):[m
+[32m+[m[32m            pending = [[m
+[32m+[m[32m                ([m
+[32m+[m[32m                    self._validate_key(key),[m
+[32m+[m[32m                    agent,[m
+[32m+[m[32m                )[m
+[32m+[m[32m                for key, agent in agents.items()[m
+[32m+[m[32m            ][m
+[32m+[m
+[32m+[m[32m        else:[m
+[32m+[m[32m            pending = [[m
+[32m+[m[32m                ([m
+[32m+[m[32m                    self._resolve_key([m
+[32m+[m[32m                        agent,[m
+[32m+[m[32m                        None,[m
+[32m+[m[32m                    ),[m
+[32m+[m[32m                    agent,[m
+[32m+[m[32m                )[m
+[32m+[m[32m                for agent in agents[m
+[32m+[m[32m            ][m
+[32m+[m
+[32m+[m[32m        existing_keys = set(self._agents)[m
+[32m+[m[32m        batch_keys: set[str] = set()[m
+[32m+[m
+[32m+[m[32m        for key, _agent in pending:[m
+[32m+[m[32m            if key in existing_keys:[m
+[32m+[m[32m                raise ValueError([m
+[32m+[m[32m                    f"Agent already registered: {key}"[m
+[32m+[m[32m                )[m
+[32m+[m
+[32m+[m[32m            if key in batch_keys:[m
+[32m+[m[32m                raise ValueError([m
+[32m+[m[32m                    "Duplicate agent key in registration batch: "[m
+[32m+[m[32m                    f"{key}"[m
+[32m+[m[32m                )[m
+[32m+[m
+[32m+[m[32m            batch_keys.add(key)[m
+[32m+[m
+[32m+[m[32m        for key, agent in pending:[m
+[32m+[m[32m            self._agents[key] = agent[m
+[32m+[m
+[32m+[m[32m    def get([m
+[32m+[m[32m        self,[m
+[32m+[m[32m        name: str,[m
+[32m+[m[32m    ) -> BaseAgent:[m
+[32m+[m[32m        """Resolve one agent by logical registry key."""[m
+ [m
+[31m-    def get(self, name: str) -> BaseAgent:[m
+         try:[m
+             return self._agents[name][m
+[32m+[m
+         except KeyError as exc:[m
+[31m-            raise KeyError(f"Unknown agent: {name}") from exc[m
+[32m+[m[32m            raise KeyError([m
+[32m+[m[32m                f"Unknown agent: {name}"[m
+[32m+[m[32m            ) from exc[m
+[32m+[m
+[32m+[m[32m    def contains([m
+[32m+[m[32m        self,[m
+[32m+[m[32m        name: str,[m
+[32m+[m[32m    ) -> bool:[m
+[32m+[m[32m        """Return whether an agent key is registered."""[m
+[32m+[m
+[32m+[m[32m        return name in self._agents[m
+[32m+[m
+[32m+[m[32m    def list_agents([m
+[32m+[m[32m        self,[m
+[32m+[m[32m    ) -> list[str]:[m
+[32m+[m[32m        """Return logical agent keys in registration order."""[m
+ [m
+[31m-    def list_agents(self) -> list[str]:[m
+         return list(self._agents)[m
+ [m
+[32m+[m[32m    def as_mapping([m
+[32m+[m[32m        self,[m
+[32m+[m[32m    ) -> dict[str, BaseAgent]:[m
+[32m+[m[32m        """Return a defensive mapping suitable for AgentRuntime."""[m
+[32m+[m
+[32m+[m[32m        return dict(self._agents)[m
+[32m+[m
+[32m+[m[32m    def __contains__([m
+[32m+[m[32m        self,[m
+[32m+[m[32m        name: object,[m
+[32m+[m[32m    ) -> bool:[m
+[32m+[m[32m        """Support ``name in registry``."""[m
+[32m+[m
+[32m+[m[32m        return ([m
+[32m+[m[32m            isinstance(name, str)[m
+[32m+[m[32m            and name in self._agents[m
+[32m+[m[32m        )[m
+[32m+[m
+[32m+[m[32m    def __len__([m
+[32m+[m[32m        self,[m
+[32m+[m[32m    ) -> int:[m
+[32m+[m[32m        """Return the number of registered agents."""[m
+[32m+[m
+[32m+[m[32m        return len(self._agents)[m
+[32m+[m
+[32m+[m[32m    @classmethod[m
+[32m+[m[32m    def _resolve_key([m
+[32m+[m[32m        cls,[m
+[32m+[m[32m        agent: BaseAgent,[m
+[32m+[m[32m        key: str | None,[m
+[32m+[m[32m    ) -> str:[m
+[32m+[m[32m        """Resolve explicit logical key or fall back to agent.name."""[m
+[32m+[m
+[32m+[m[32m        resolved_key = ([m
+[32m+[m[32m            key[m
+[32m+[m[32m            if key is not None[m
+[32m+[m[32m            else agent.name[m
+[32m+[m[32m        )[m
+[32m+[m
+[32m+[m[32m        return cls._validate_key([m
+[32m+[m[32m            resolved_key[m
+[32m+[m[32m        )[m
+[32m+[m
+[32m+[m[32m    @staticmethod[m
+[32m+[m[32m    def _validate_key([m
+[32m+[m[32m        key: str,[m
+[32m+[m[32m    ) -> str:[m
+[32m+[m[32m        """Validate a logical agent registry key."""[m
+[32m+[m
+[32m+[m[32m        if not isinstance(key, str):[m
+[32m+[m[32m            raise ValueError([m
+[32m+[m[32m                "Agent registry key must be a string"[m
+[32m+[m[32m            )[m
+[32m+[m
+[32m+[m[32m        if not key:[m
+[32m+[m[32m            raise ValueError([m
+[32m+[m[32m                "Agent registry key cannot be empty"[m
+[32m+[m[32m            )[m
+[32m+[m
+[32m+[m[32m        if key.strip() != key:[m
+[32m+[m[32m            raise ValueError([m
+[32m+[m[32m                "Agent registry key cannot contain "[m
+[32m+[m[32m                "leading or trailing whitespace"[m
+[32m+[m[32m            )[m
+[32m+[m
+[32m+[m[32m        return key[m
+\ No newline at end of file[m
+[1mdiff --git a/src/vulnagent/bootstrap.py b/src/vulnagent/bootstrap.py[m
+[1mindex 65e9533..8919923 100644[m
+[1m--- a/src/vulnagent/bootstrap.py[m
+[1m+++ b/src/vulnagent/bootstrap.py[m
+[36m@@ -1,58 +1,380 @@[m
+[31m-"""Application composition root.[m
+[32m+[m[32m"""VulnAgent application composition root.[m
+ [m
+[31m-Concrete implementations are wired only here so business modules depend on ports.[m
+[32m+[m[32mAll concrete implementations are assembled here.[m
+[32m+[m
+[32m+[m[32mBusiness modules must depend on public Contracts/Protocols and must not[m
+[32m+[m[32mconstruct concrete analyzers, fuzzers, verifiers, report generators,[m
+[32m+[m[32mexternal tools, or model providers by themselves.[m
+[32m+[m
+[32m+[m[32mThe composition root is intentionally explicit.  VulnAgent does not use[m
+[32m+[m[32ma reflection-heavy dependency injection framework because explicit[m
+[32m+[m[32mconstruction is easier to test, review and reproduce.[m
+ """[m
+ [m
+[31m-from vulnagent.agents import BinaryAnalysisAgent, FuzzAgent, PlannerAgent, ReportAgent, ReviewerAgent, SourceAuditAgent, VerificationAgent[m
+[31m-from vulnagent.agent_runtime import AgentRuntime, AgentSuite, RuntimePolicy, ToolRegistry, ToolSpec[m
+[31m-from vulnagent.analyzers.binary.reverse import MockBinaryReverseAnalyzer[m
+[31m-from vulnagent.analyzers.source.audit import MockSourceAuditor[m
+[31m-from vulnagent.analyzers.source.parser import MockSourceParser[m
+[32m+[m[32mfrom dataclasses import dataclass[m
+[32m+[m[32mfrom typing import cast[m
+[32m+[m
+[32m+[m[32mfrom vulnagent.agent_runtime import ([m
+[32m+[m[32m    AgentRoute,[m
+[32m+[m[32m    AgentRuntime,[m
+[32m+[m[32m    CapabilityName,[m
+[32m+[m[32m    RuntimePolicy,[m
+[32m+[m[32m    ToolRegistry,[m
+[32m+[m[32m    ToolSpec,[m
+[32m+[m[32m)[m
+[32m+[m[32mfrom vulnagent.agents import ([m
+[32m+[m[32m    BinaryAnalysisAgent,[m
+[32m+[m[32m    FuzzAgent,[m
+[32m+[m[32m    PlannerAgent,[m
+[32m+[m[32m    ReportAgent,[m
+[32m+[m[32m    ReviewerAgent,[m
+[32m+[m[32m    SourceAuditAgent,[m
+[32m+[m[32m    VerificationAgent,[m
+[32m+[m[32m)[m
+[32m+[m[32mfrom vulnagent.agents.registry import AgentRegistry[m
+[32m+[m[32mfrom vulnagent.analyzers.binary.reverse import ([m
+[32m+[m[32m    MockBinaryReverseAnalyzer,[m
+[32m+[m[32m)[m
+[32m+[m[32mfrom vulnagent.analyzers.source.audit import ([m
+[32m+[m[32m    MockSourceAuditor,[m
+[32m+[m[32m)[m
+[32m+[m[32mfrom vulnagent.analyzers.source.parser import ([m
+[32m+[m[32m    MockSourceParser,[m
+[32m+[m[32m)[m
+[32m+[m[32mfrom vulnagent.contracts import ([m
+[32m+[m[32m    EvidenceRepository,[m
+[32m+[m[32m    TaskRepository,[m
+[32m+[m[32m)[m
+[32m+[m[32mfrom vulnagent.core.dependencies import CapabilityBundle[m
+ from vulnagent.core.event_bus import EventBus[m
+ from vulnagent.core.orchestrator import Orchestrator[m
+[31m-from vulnagent.core.task_manager import InMemoryTaskManager[m
+[31m-from vulnagent.evidence.store import InMemoryEvidenceStore[m
+[32m+[m[32mfrom vulnagent.core.task_manager import ([m
+[32m+[m[32m    InMemoryTaskManager,[m
+[32m+[m[32m)[m
+[32m+[m[32mfrom vulnagent.evidence.store import ([m
+[32m+[m[32m    InMemoryEvidenceStore,[m
+[32m+[m[32m)[m
+ from vulnagent.fuzz.mock import MockFuzzEngine[m
+[32m+[m[32mfrom vulnagent.llm.base import BaseLLM[m
+ from vulnagent.llm.router import LLMRouter[m
+[31m-from vulnagent.report.generator import MockReportGenerator[m
+[31m-from vulnagent.settings import get_settings[m
+[31m-from vulnagent.verification.verifier import MockVerifier[m
+[31m-[m
+[31m-[m
+[31m-def build_mock_services() -> tuple[InMemoryTaskManager, InMemoryEvidenceStore, Orchestrator]:[m
+[31m-    """Build an isolated, safe, non-executing V0.2 service graph."""[m
+[31m-    task_manager = InMemoryTaskManager()[m
+[31m-    evidence_store = InMemoryEvidenceStore()[m
+[31m-    settings = get_settings()[m
+[31m-    source_parser = MockSourceParser()[m
+[31m-    source_auditor = MockSourceAuditor()[m
+[31m-    binary_analyzer = MockBinaryReverseAnalyzer()[m
+[31m-    fuzz_engine = MockFuzzEngine()[m
+[31m-    verifier = MockVerifier()[m
+[31m-    report_generator = MockReportGenerator()[m
+[31m-    agents = AgentSuite([m
+[31m-        planner=PlannerAgent(),[m
+[31m-        source_analysis=SourceAuditAgent(source_parser, source_auditor),[m
+[31m-        binary_analysis=BinaryAnalysisAgent(binary_analyzer),[m
+[31m-        fuzz=FuzzAgent(fuzz_engine),[m
+[31m-        verification=VerificationAgent(verifier),[m
+[31m-        reviewer=ReviewerAgent(),[m
+[31m-        report=ReportAgent(report_generator),[m
+[31m-    )[m
+[31m-    tools = ToolRegistry()[m
+[31m-    tools.register(ToolSpec("source.parse", "Parse source structure", source_parser.analyze, "P2", "source"))[m
+[31m-    tools.register(ToolSpec("source.audit", "Audit parsed source", source_auditor.audit, "P3", "source"))[m
+[31m-    tools.register(ToolSpec("binary.inspect", "Inspect binary statically", binary_analyzer.analyze, "P4", "binary"))[m
+[31m-    tools.register(ToolSpec("fuzz.execute", "Run an authorization-gated fuzz adapter", fuzz_engine.run, "P6", "dynamic"))[m
+[31m-    tools.register(ToolSpec("verification.verify", "Verify one candidate independently", verifier.verify, "P7", "verification"))[m
+[31m-    tools.register(ToolSpec("report.generate", "Generate a structured report", report_generator.generate, "P9", "report"))[m
+[31m-    llm_router = LLMRouter()[m
+[31m-    event_bus = EventBus()[m
+[32m+[m[32mfrom vulnagent.report.generator import ([m
+[32m+[m[32m    MockReportGenerator,[m
+[32m+[m[32m)[m
+[32m+[m[32mfrom vulnagent.settings import ([m
+[32m+[m[32m    Settings,[m
+[32m+[m[32m    get_settings,[m
+[32m+[m[32m)[m
+[32m+[m[32mfrom vulnagent.verification.verifier import ([m
+[32m+[m[32m    MockVerifier,[m
+[32m+[m[32m)[m
+[32m+[m
+[32m+[m
+[32m+[m[32m@dataclass([m
+[32m+[m[32m    frozen=True,[m
+[32m+[m[32m    slots=True,[m
+[32m+[m[32m)[m
+[32m+[m[32mclass ApplicationServices:[m
+[32m+[m[32m    """Fully composed process-local VulnAgent service graph."""[m
+[32m+[m
+[32m+[m[32m    settings: Settings[m
+[32m+[m
+[32m+[m[32m    task_manager: TaskRepository[m
+[32m+[m[32m    evidence_store: EvidenceRepository[m
+[32m+[m[32m    event_bus: EventBus[m
+[32m+[m
+[32m+[m[32m    capabilities: CapabilityBundle[m
+[32m+[m
+[32m+[m[32m    agent_registry: AgentRegistry[m
+[32m+[m[32m    tool_registry: ToolRegistry[m
+[32m+[m
+[32m+[m[32m    llm: BaseLLM[m
+[32m+[m
+[32m+[m[32m    runtime_policy: RuntimePolicy[m
+[32m+[m[32m    runtime: AgentRuntime[m
+[32m+[m
+[32m+[m[32m    orchestrator: Orchestrator[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef build_mock_capabilities() -> CapabilityBundle:[m
+[32m+[m[32m    """Build the default safe and non-destructive V0.2 capabilities."""[m
+[32m+[m
+[32m+[m[32m    return CapabilityBundle([m
+[32m+[m[32m        source_parser=MockSourceParser(),[m
+[32m+[m[32m        source_auditor=MockSourceAuditor(),[m
+[32m+[m[32m        binary_analyzer=MockBinaryReverseAnalyzer(),[m
+[32m+[m[32m        fuzz_engine=MockFuzzEngine(),[m
+[32m+[m[32m        verifier=MockVerifier(),[m
+[32m+[m[32m        report_generator=MockReportGenerator(),[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef build_tool_registry([m
+[32m+[m[32m    capabilities: CapabilityBundle,[m
+[32m+[m[32m) -> ToolRegistry:[m
+[32m+[m[32m    """Build the single provider-neutral logical capability registry."""[m
+[32m+[m
+[32m+[m[32m    registry = ToolRegistry()[m
+[32m+[m
+[32m+[m[32m    registry.register_many([m
+[32m+[m[32m        [[m
+[32m+[m[32m            ToolSpec([m
+[32m+[m[32m                name=CapabilityName.SOURCE_PARSE.value,[m
+[32m+[m[32m                description="Parse source project structure",[m
+[32m+[m[32m                adapter=capabilities.source_parser.analyze,[m
+[32m+[m[32m                owner="P2",[m
+[32m+[m[32m                capability_type="source",[m
+[32m+[m[32m            ),[m
+[32m+[m[32m            ToolSpec([m
+[32m+[m[32m                name=CapabilityName.SOURCE_AUDIT.value,[m
+[32m+[m[32m                description="Audit parsed source structure",[m
+[32m+[m[32m                adapter=capabilities.source_auditor.audit,[m
+[32m+[m[32m                owner="P3",[m
+[32m+[m[32m                capability_type="source",[m
+[32m+[m[32m            ),[m
+[32m+[m[32m            ToolSpec([m
+[32m+[m[32m                name=CapabilityName.BINARY_INSPECT.value,[m
+[32m+[m[32m                description="Inspect a binary statically",[m
+[32m+[m[32m                adapter=capabilities.binary_analyzer.analyze,[m
+[32m+[m[32m                owner="P4",[m
+[32m+[m[32m                capability_type="binary",[m
+[32m+[m[32m            ),[m
+[32m+[m[32m            ToolSpec([m
+[32m+[m[32m                name=CapabilityName.FUZZ_EXECUTE.value,[m
+[32m+[m[32m                description=([m
+[32m+[m[32m                    "Run an authorization-gated fuzz capability"[m
+[32m+[m[32m                ),[m
+[32m+[m[32m                adapter=capabilities.fuzz_engine.run,[m
+[32m+[m[32m                owner="P6",[m
+[32m+[m[32m                capability_type="dynamic",[m
+[32m+[m[32m            ),[m
+[32m+[m[32m            ToolSpec([m
+[32m+[m[32m                name=CapabilityName.VERIFICATION_VERIFY.value,[m
+[32m+[m[32m                description=([m
+[32m+[m[32m                    "Independently verify one vulnerability candidate"[m
+[32m+[m[32m                ),[m
+[32m+[m[32m                adapter=capabilities.verifier.verify,[m
+[32m+[m[32m                owner="P7",[m
+[32m+[m[32m                capability_type="verification",[m
+[32m+[m[32m            ),[m
+[32m+[m[32m            ToolSpec([m
+[32m+[m[32m                name=CapabilityName.REPORT_GENERATE.value,[m
+[32m+[m[32m                description="Generate a structured VulnAgent report",[m
+[32m+[m[32m                adapter=capabilities.report_generator.generate,[m
+[32m+[m[32m                owner="P9",[m
+[32m+[m[32m                capability_type="report",[m
+[32m+[m[32m            ),[m
+[32m+[m[32m        ][m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    return registry[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef build_agent_registry([m
+[32m+[m[32m    capabilities: CapabilityBundle,[m
+[32m+[m[32m) -> AgentRegistry:[m
+[32m+[m[32m    """Build runtime agents from injected capability Protocols.[m
+[32m+[m
+[32m+[m[32m    Registry keys deliberately use AgentRoute values rather than[m
+[32m+[m[32m    BaseAgent.name.[m
+[32m+[m[32m    """[m
+[32m+[m
+[32m+[m[32m    registry = AgentRegistry()[m
+[32m+[m
+[32m+[m[32m    registry.register_many([m
+[32m+[m[32m        {[m
+[32m+[m[32m            AgentRoute.PLANNER.value:[m
+[32m+[m[32m                PlannerAgent(),[m
+[32m+[m
+[32m+[m[32m            AgentRoute.SOURCE_ANALYSIS.value:[m
+[32m+[m[32m                SourceAuditAgent([m
+[32m+[m[32m                    capabilities.source_parser,[m
+[32m+[m[32m                    capabilities.source_auditor,[m
+[32m+[m[32m                ),[m
+[32m+[m
+[32m+[m[32m            AgentRoute.BINARY_ANALYSIS.value:[m
+[32m+[m[32m                BinaryAnalysisAgent([m
+[32m+[m[32m                    capabilities.binary_analyzer,[m
+[32m+[m[32m                ),[m
+[32m+[m
+[32m+[m[32m            AgentRoute.FUZZ.value:[m
+[32m+[m[32m                FuzzAgent([m
+[32m+[m[32m                    capabilities.fuzz_engine,[m
+[32m+[m[32m                ),[m
+[32m+[m
+[32m+[m[32m            AgentRoute.VERIFICATION.value:[m
+[32m+[m[32m                VerificationAgent([m
+[32m+[m[32m                    capabilities.verifier,[m
+[32m+[m[32m                ),[m
+[32m+[m
+[32m+[m[32m            AgentRoute.REVIEWER.value:[m
+[32m+[m[32m                ReviewerAgent(),[m
+[32m+[m
+[32m+[m[32m            AgentRoute.REPORT.value:[m
+[32m+[m[32m                ReportAgent([m
+[32m+[m[32m                    capabilities.report_generator,[m
+[32m+[m[32m                ),[m
+[32m+[m[32m        }[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    return registry[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef build_runtime_policy([m
+[32m+[m[32m    settings: Settings,[m
+[32m+[m[32m) -> RuntimePolicy:[m
+[32m+[m[32m    """Build bounded runtime policy from application settings."""[m
+[32m+[m
+[32m+[m[32m    return RuntimePolicy([m
+[32m+[m[32m        max_agent_steps=settings.max_agent_steps,[m
+[32m+[m[32m        max_route_repeats=settings.max_route_repeats,[m
+[32m+[m[32m        max_analysis_retries=settings.max_analysis_retries,[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef build_application([m
+[32m+[m[32m    capabilities: CapabilityBundle,[m
+[32m+[m[32m    *,[m
+[32m+[m[32m    settings: Settings | None = None,[m
+[32m+[m[32m    task_manager: TaskRepository | None = None,[m
+[32m+[m[32m    evidence_store: EvidenceRepository | None = None,[m
+[32m+[m[32m    event_bus: EventBus | None = None,[m
+[32m+[m[32m    llm: BaseLLM | None = None,[m
+[32m+[m[32m    agent_registry: AgentRegistry | None = None,[m
+[32m+[m[32m    tool_registry: ToolRegistry | None = None,[m
+[32m+[m[32m    runtime_policy: RuntimePolicy | None = None,[m
+[32m+[m[32m) -> ApplicationServices:[m
+[32m+[m[32m    """Compose a complete VulnAgent application dependency graph.[m
+[32m+[m
+[32m+[m[32m    This is the primary dependency-injection boundary.[m
+[32m+[m
+[32m+[m[32m    Real implementations should be supplied here as public[m
+[32m+[m[32m    Protocol-compatible dependencies instead of being imported by[m
+[32m+[m[32m    AgentRuntime, Orchestrator or individual Agents.[m
+[32m+[m[32m    """[m
+[32m+[m
+[32m+[m[32m    resolved_settings = ([m
+[32m+[m[32m        settings[m
+[32m+[m[32m        if settings is not None[m
+[32m+[m[32m        else get_settings()[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    resolved_task_manager = ([m
+[32m+[m[32m        task_manager[m
+[32m+[m[32m        if task_manager is not None[m
+[32m+[m[32m        else InMemoryTaskManager()[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    resolved_evidence_store = ([m
+[32m+[m[32m        evidence_store[m
+[32m+[m[32m        if evidence_store is not None[m
+[32m+[m[32m        else InMemoryEvidenceStore()[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    resolved_event_bus = ([m
+[32m+[m[32m        event_bus[m
+[32m+[m[32m        if event_bus is not None[m
+[32m+[m[32m        else EventBus()[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    resolved_llm = ([m
+[32m+[m[32m        llm[m
+[32m+[m[32m        if llm is not None[m
+[32m+[m[32m        else LLMRouter().get([m
+[32m+[m[32m            resolved_settings.llm_provider[m
+[32m+[m[32m        )[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    resolved_tool_registry = ([m
+[32m+[m[32m        tool_registry[m
+[32m+[m[32m        if tool_registry is not None[m
+[32m+[m[32m        else build_tool_registry([m
+[32m+[m[32m            capabilities[m
+[32m+[m[32m        )[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    resolved_agent_registry = ([m
+[32m+[m[32m        agent_registry[m
+[32m+[m[32m        if agent_registry is not None[m
+[32m+[m[32m        else build_agent_registry([m
+[32m+[m[32m            capabilities[m
+[32m+[m[32m        )[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    resolved_runtime_policy = ([m
+[32m+[m[32m        runtime_policy[m
+[32m+[m[32m        if runtime_policy is not None[m
+[32m+[m[32m        else build_runtime_policy([m
+[32m+[m[32m            resolved_settings[m
+[32m+[m[32m        )[m
+[32m+[m[32m    )[m
+[32m+[m
+     runtime = AgentRuntime([m
+[31m-        agents.as_mapping(),[m
+[31m-        policy=RuntimePolicy(max_agent_steps=settings.max_agent_steps, max_route_repeats=settings.max_route_repeats),[m
+[31m-        publish_event=event_bus.publish,[m
+[31m-        tool_registry=tools,[m
+[31m-        llm=llm_router.get(settings.llm_provider),[m
+[32m+[m[32m        resolved_agent_registry.as_mapping(),[m
+[32m+[m[32m        policy=resolved_runtime_policy,[m
+[32m+[m[32m        publish_event=resolved_event_bus.publish,[m
+[32m+[m[32m        tool_registry=resolved_tool_registry,[m
+[32m+[m[32m        llm=resolved_llm,[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    orchestrator = Orchestrator([m
+[32m+[m[32m        resolved_task_manager,[m
+[32m+[m[32m        resolved_evidence_store,[m
+[32m+[m[32m        runtime,[m
+[32m+[m[32m        resolved_event_bus,[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    return ApplicationServices([m
+[32m+[m[32m        settings=resolved_settings,[m
+[32m+[m[32m        task_manager=resolved_task_manager,[m
+[32m+[m[32m        evidence_store=resolved_evidence_store,[m
+[32m+[m[32m        event_bus=resolved_event_bus,[m
+[32m+[m[32m        capabilities=capabilities,[m
+[32m+[m[32m        agent_registry=resolved_agent_registry,[m
+[32m+[m[32m        tool_registry=resolved_tool_registry,[m
+[32m+[m[32m        llm=resolved_llm,[m
+[32m+[m[32m        runtime_policy=resolved_runtime_policy,[m
+[32m+[m[32m        runtime=runtime,[m
+[32m+[m[32m        orchestrator=orchestrator,[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef build_mock_application([m
+[32m+[m[32m    *,[m
+[32m+[m[32m    settings: Settings | None = None,[m
+[32m+[m[32m) -> ApplicationServices:[m
+[32m+[m[32m    """Build the default safe V0.2 mock application."""[m
+[32m+[m
+[32m+[m[32m    return build_application([m
+[32m+[m[32m        build_mock_capabilities(),[m
+[32m+[m[32m        settings=settings,[m
+     )[m
+[31m-    return task_manager, evidence_store, Orchestrator(task_manager, evidence_store, runtime, event_bus)[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef build_mock_services([m
+[32m+[m[32m) -> tuple[[m
+[32m+[m[32m    InMemoryTaskManager,[m
+[32m+[m[32m    InMemoryEvidenceStore,[m
+[32m+[m[32m    Orchestrator,[m
+[32m+[m[32m]:[m
+[32m+[m[32m    """Backward-compatible V0.2 service builder.[m
+[32m+[m
+[32m+[m[32m    Existing API and integration tests still consume the historical[m
+[32m+[m[32m    ``(task_manager, evidence_store, orchestrator)`` tuple.[m
+[32m+[m
+[32m+[m[32m    Keep this wrapper until those callers are deliberately migrated to[m
+[32m+[m[32m    ``ApplicationServices``.[m
+[32m+[m[32m    """[m
+[32m+[m
+[32m+[m[32m    services = build_mock_application()[m
+[32m+[m
+[32m+[m[32m    return ([m
+[32m+[m[32m        cast([m
+[32m+[m[32m            InMemoryTaskManager,[m
+[32m+[m[32m            services.task_manager,[m
+[32m+[m[32m        ),[m
+[32m+[m[32m        cast([m
+[32m+[m[32m            InMemoryEvidenceStore,[m
+[32m+[m[32m            services.evidence_store,[m
+[32m+[m[32m        ),[m
+[32m+[m[32m        services.orchestrator,[m
+[32m+[m[32m    )[m
+\ No newline at end of file[m
+[1mdiff --git a/src/vulnagent/core/dependencies.py b/src/vulnagent/core/dependencies.py[m
+[1mnew file mode 100644[m
+[1mindex 0000000..9a53e00[m
+[1m--- /dev/null[m
+[1m+++ b/src/vulnagent/core/dependencies.py[m
+[36m@@ -0,0 +1,111 @@[m
+[32m+[m[32m"""Provider-neutral application dependency definitions.[m
+[32m+[m
+[32m+[m[32mThis module groups public capability Protocol implementations required[m
+[32m+[m[32mby the VulnAgent composition root.[m
+[32m+[m
+[32m+[m[32mNo concrete analyzer, fuzzer, verifier, report generator or external[m
+[32m+[m[32mprovider implementation may be imported here.[m
+[32m+[m[32m"""[m
+[32m+[m
+[32m+[m[32mfrom dataclasses import dataclass[m
+[32m+[m[32mfrom typing import Any[m
+[32m+[m
+[32m+[m[32mfrom vulnagent.contracts import ([m
+[32m+[m[32m    BinaryAnalyzer,[m
+[32m+[m[32m    FuzzEngine,[m
+[32m+[m[32m    ReportGenerator,[m
+[32m+[m[32m    SourceAuditor,[m
+[32m+[m[32m    SourceParser,[m
+[32m+[m[32m    VulnerabilityVerifier,[m
+[32m+[m[32m)[m
+[32m+[m
+[32m+[m
+[32m+[m[32m@dataclass([m
+[32m+[m[32m    frozen=True,[m
+[32m+[m[32m    slots=True,[m
+[32m+[m[32m)[m
+[32m+[m[32mclass CapabilityBundle:[m
+[32m+[m[32m    """Injected domain capabilities required by VulnAgent.[m
+[32m+[m
+[32m+[m[32m    Members are typed against public Contracts/Protocols rather than[m
+[32m+[m[32m    concrete implementations.[m
+[32m+[m
+[32m+[m[32m    Replacing a Mock implementation with a real implementation should[m
+[32m+[m[32m    therefore require only a Composition Root change.[m
+[32m+[m[32m    """[m
+[32m+[m
+[32m+[m[32m    source_parser: SourceParser[m
+[32m+[m[32m    source_auditor: SourceAuditor[m
+[32m+[m
+[32m+[m[32m    binary_analyzer: BinaryAnalyzer[m
+[32m+[m
+[32m+[m[32m    fuzz_engine: FuzzEngine[m
+[32m+[m
+[32m+[m[32m    verifier: VulnerabilityVerifier[m
+[32m+[m
+[32m+[m[32m    report_generator: ReportGenerator[m
+[32m+[m
+[32m+[m[32m    def __post_init__(self) -> None:[m
+[32m+[m[32m        """Perform small structural checks on injected capabilities.[m
+[32m+[m
+[32m+[m[32m        Existing Contracts are intentionally not changed merely to make[m
+[32m+[m[32m        them runtime-checkable.  Bootstrap instead performs explicit[m
+[32m+[m[32m        fail-fast checks for required async operations.[m
+[32m+[m[32m        """[m
+[32m+[m
+[32m+[m[32m        self._require_callable([m
+[32m+[m[32m            self.source_parser,[m
+[32m+[m[32m            "analyze",[m
+[32m+[m[32m            "source_parser",[m
+[32m+[m[32m        )[m
+[32m+[m
+[32m+[m[32m        self._require_callable([m
+[32m+[m[32m            self.source_auditor,[m
+[32m+[m[32m            "audit",[m
+[32m+[m[32m            "source_auditor",[m
+[32m+[m[32m        )[m
+[32m+[m
+[32m+[m[32m        self._require_callable([m
+[32m+[m[32m            self.binary_analyzer,[m
+[32m+[m[32m            "analyze",[m
+[32m+[m[32m            "binary_analyzer",[m
+[32m+[m[32m        )[m
+[32m+[m
+[32m+[m[32m        self._require_callable([m
+[32m+[m[32m            self.fuzz_engine,[m
+[32m+[m[32m            "run",[m
+[32m+[m[32m            "fuzz_engine",[m
+[32m+[m[32m        )[m
+[32m+[m
+[32m+[m[32m        self._require_callable([m
+[32m+[m[32m            self.verifier,[m
+[32m+[m[32m            "verify",[m
+[32m+[m[32m            "verifier",[m
+[32m+[m[32m        )[m
+[32m+[m
+[32m+[m[32m        self._require_callable([m
+[32m+[m[32m            self.report_generator,[m
+[32m+[m[32m            "generate",[m
+[32m+[m[32m            "report_generator",[m
+[32m+[m[32m        )[m
+[32m+[m
+[32m+[m[32m    @staticmethod[m
+[32m+[m[32m    def _require_callable([m
+[32m+[m[32m        dependency: Any,[m
+[32m+[m[32m        method_name: str,[m
+[32m+[m[32m        dependency_name: str,[m
+[32m+[m[32m    ) -> None:[m
+[32m+[m[32m        """Ensure one injected capability exposes its required method."""[m
+[32m+[m
+[32m+[m[32m        method = getattr([m
+[32m+[m[32m            dependency,[m
+[32m+[m[32m            method_name,[m
+[32m+[m[32m            None,[m
+[32m+[m[32m        )[m
+[32m+[m
+[32m+[m[32m        if not callable(method):[m
+[32m+[m[32m            raise TypeError([m
+[32m+[m[32m                "Invalid injected capability "[m
+[32m+[m[32m                f"{dependency_name!r}: "[m
+[32m+[m[32m                f"missing callable {method_name!r}"[m
+[32m+[m[32m            )[m
+\ No newline at end of file[m
+[1mdiff --git a/src/vulnagent/settings.py b/src/vulnagent/settings.py[m
+[1mindex 25fe970..08ecedd 100644[m
+[1m--- a/src/vulnagent/settings.py[m
+[1m+++ b/src/vulnagent/settings.py[m
+[36m@@ -2,26 +2,37 @@[m
+ [m
+ from functools import lru_cache[m
+ [m
+[31m-from pydantic_settings import BaseSettings, SettingsConfigDict[m
+[32m+[m[32mfrom pydantic_settings import ([m
+[32m+[m[32m    BaseSettings,[m
+[32m+[m[32m    SettingsConfigDict,[m
+[32m+[m[32m)[m
+ [m
+ [m
+ class Settings(BaseSettings):[m
+[31m-    """Runtime settings; real provider credentials are always optional in V0.2."""[m
+[32m+[m[32m    """Runtime configuration for VulnAgent."""[m
+ [m
+     app_name: str = "VulnAgent"[m
+     app_env: str = "development"[m
+     log_level: str = "INFO"[m
+[32m+[m
+     llm_provider: str = "mock"[m
+[32m+[m
+     deepseek_api_key: str | None = None[m
+     glm_api_key: str | None = None[m
+     kimi_api_key: str | None = None[m
+[32m+[m
+     max_agent_steps: int = 15[m
+     max_route_repeats: int = 2[m
+[32m+[m[32m    max_analysis_retries: int = 1[m
+ [m
+[31m-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")[m
+[32m+[m[32m    model_config = SettingsConfigDict([m
+[32m+[m[32m        env_file=".env",[m
+[32m+[m[32m        extra="ignore",[m
+[32m+[m[32m    )[m
+ [m
+ [m
+ @lru_cache[m
+ def get_settings() -> Settings:[m
+[31m-    """Return the process-wide immutable settings instance."""[m
+[31m-    return Settings()[m
+[32m+[m[32m    """Return the cached process-wide settings instance."""[m
+[32m+[m
+[32m+[m[32m    return Settings()[m
+\ No newline at end of file[m
+[1mdiff --git a/tests/unit/test_agent_registry.py b/tests/unit/test_agent_registry.py[m
+[1mindex a78c36e..715408a 100644[m
+[1m--- a/tests/unit/test_agent_registry.py[m
+[1m+++ b/tests/unit/test_agent_registry.py[m
+[36m@@ -1,15 +1,137 @@[m
+ import pytest[m
+ [m
+[31m-from vulnagent.agents.planner_agent import PlannerAgent[m
+[31m-from vulnagent.agents.registry import AgentRegistry[m
+[32m+[m[32mfrom vulnagent.agents.planner_agent import ([m
+[32m+[m[32m    PlannerAgent,[m
+[32m+[m[32m)[m
+[32m+[m[32mfrom vulnagent.agents.registry import ([m
+[32m+[m[32m    AgentRegistry,[m
+[32m+[m[32m)[m
+[32m+[m[32mfrom vulnagent.agents.reviewer_agent import ([m
+[32m+[m[32m    ReviewerAgent,[m
+[32m+[m[32m)[m
+ [m
+ [m
+ def test_register_get_and_list() -> None:[m
+     registry = AgentRegistry()[m
+[32m+[m
+     agent = PlannerAgent()[m
+[32m+[m
+     registry.register(agent)[m
+[32m+[m
+     assert registry.get("planner") is agent[m
+[31m-    assert registry.list_agents() == ["planner"][m
+[31m-    with pytest.raises(ValueError):[m
+[31m-        registry.register(PlannerAgent())[m
+ [m
+[32m+[m[32m    assert registry.list_agents() == [[m
+[32m+[m[32m        "planner"[m
+[32m+[m[32m    ][m
+[32m+[m
+[32m+[m[32m    assert "planner" in registry[m
+[32m+[m[32m    assert len(registry) == 1[m
+[32m+[m
+[32m+[m[32m    with pytest.raises([m
+[32m+[m[32m        ValueError,[m
+[32m+[m[32m        match="Agent already registered",[m
+[32m+[m[32m    ):[m
+[32m+[m[32m        registry.register([m
+[32m+[m[32m            PlannerAgent()[m
+[32m+[m[32m        )[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef test_register_with_logical_key() -> None:[m
+[32m+[m[32m    registry = AgentRegistry()[m
+[32m+[m
+[32m+[m[32m    agent = ReviewerAgent()[m
+[32m+[m
+[32m+[m[32m    registry.register([m
+[32m+[m[32m        agent,[m
+[32m+[m[32m        key="custom_reviewer_route",[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    assert ([m
+[32m+[m[32m        registry.get([m
+[32m+[m[32m            "custom_reviewer_route"[m
+[32m+[m[32m        )[m
+[32m+[m[32m        is agent[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    assert registry.list_agents() == [[m
+[32m+[m[32m        "custom_reviewer_route"[m
+[32m+[m[32m    ][m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef test_register_many_with_route_mapping() -> None:[m
+[32m+[m[32m    registry = AgentRegistry()[m
+[32m+[m
+[32m+[m[32m    planner = PlannerAgent()[m
+[32m+[m[32m    reviewer = ReviewerAgent()[m
+[32m+[m
+[32m+[m[32m    registry.register_many([m
+[32m+[m[32m        {[m
+[32m+[m[32m            "planner": planner,[m
+[32m+[m[32m            "reviewer": reviewer,[m
+[32m+[m[32m        }[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    assert registry.as_mapping() == {[m
+[32m+[m[32m        "planner": planner,[m
+[32m+[m[32m        "reviewer": reviewer,[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef test_register_many_is_atomic() -> None:[m
+[32m+[m[32m    registry = AgentRegistry()[m
+[32m+[m
+[32m+[m[32m    registry.register([m
+[32m+[m[32m        PlannerAgent()[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    with pytest.raises([m
+[32m+[m[32m        ValueError,[m
+[32m+[m[32m        match="Agent already registered",[m
+[32m+[m[32m    ):[m
+[32m+[m[32m        registry.register_many([m
+[32m+[m[32m            {[m
+[32m+[m[32m                "planner":[m
+[32m+[m[32m                    ReviewerAgent(),[m
+[32m+[m
+[32m+[m[32m                "reviewer":[m
+[32m+[m[32m                    ReviewerAgent(),[m
+[32m+[m[32m            }[m
+[32m+[m[32m        )[m
+[32m+[m
+[32m+[m[32m    assert registry.list_agents() == [[m
+[32m+[m[32m        "planner"[m
+[32m+[m[32m    ][m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef test_unknown_agent_raises_key_error() -> None:[m
+[32m+[m[32m    registry = AgentRegistry()[m
+[32m+[m
+[32m+[m[32m    with pytest.raises([m
+[32m+[m[32m        KeyError,[m
+[32m+[m[32m        match="Unknown agent",[m
+[32m+[m[32m    ):[m
+[32m+[m[32m        registry.get([m
+[32m+[m[32m            "missing"[m
+[32m+[m[32m        )[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef test_invalid_agent_key_rejected() -> None:[m
+[32m+[m[32m    registry = AgentRegistry()[m
+[32m+[m
+[32m+[m[32m    with pytest.raises([m
+[32m+[m[32m        ValueError,[m
+[32m+[m[32m        match="cannot be empty",[m
+[32m+[m[32m    ):[m
+[32m+[m[32m        registry.register([m
+[32m+[m[32m            PlannerAgent(),[m
+[32m+[m[32m            key="",[m
+[32m+[m[32m        )[m
+[32m+[m
+[32m+[m[32m    with pytest.raises([m
+[32m+[m[32m        ValueError,[m
+[32m+[m[32m        match="leading or trailing whitespace",[m
+[32m+[m[32m    ):[m
+[32m+[m[32m        registry.register([m
+[32m+[m[32m            PlannerAgent(),[m
+[32m+[m[32m            key=" planner ",[m
+[32m+[m[32m        )[m
+\ No newline at end of file[m
+[1mdiff --git a/tests/unit/test_dependency_injection.py b/tests/unit/test_dependency_injection.py[m
+[1mnew file mode 100644[m
+[1mindex 0000000..d6c1854[m
+[1m--- /dev/null[m
+[1m+++ b/tests/unit/test_dependency_injection.py[m
+[36m@@ -0,0 +1,147 @@[m
+[32m+[m[32mfrom dataclasses import replace[m
+[32m+[m
+[32m+[m[32mimport pytest[m
+[32m+[m
+[32m+[m[32mfrom vulnagent.agent_runtime import ([m
+[32m+[m[32m    AgentRoute,[m
+[32m+[m[32m    CapabilityName,[m
+[32m+[m[32m)[m
+[32m+[m[32mfrom vulnagent.bootstrap import ([m
+[32m+[m[32m    build_application,[m
+[32m+[m[32m    build_mock_application,[m
+[32m+[m[32m    build_mock_capabilities,[m
+[32m+[m[32m)[m
+[32m+[m[32mfrom vulnagent.contracts import ([m
+[32m+[m[32m    ProjectInput,[m
+[32m+[m[32m    SourceAnalysisResult,[m
+[32m+[m[32m)[m
+[32m+[m
+[32m+[m
+[32m+[m[32mclass FakeSourceParser:[m
+[32m+[m[32m    """Protocol-compatible replacement parser used by DI tests."""[m
+[32m+[m
+[32m+[m[32m    async def analyze([m
+[32m+[m[32m        self,[m
+[32m+[m[32m        request: ProjectInput,[m
+[32m+[m[32m    ) -> SourceAnalysisResult:[m
+[32m+[m[32m        return SourceAnalysisResult([m
+[32m+[m[32m            task_id=request.task_id,[m
+[32m+[m[32m            target_id=request.target_id,[m
+[32m+[m[32m            project_path=request.project_path,[m
+[32m+[m[32m            languages=["fake"],[m
+[32m+[m[32m            files=[],[m
+[32m+[m[32m            symbols=[],[m
+[32m+[m[32m            dependencies=[],[m
+[32m+[m[32m            call_graph={},[m
+[32m+[m[32m            metadata={[m
+[32m+[m[32m                "fake": True,[m
+[32m+[m[32m            },[m
+[32m+[m[32m        )[m
+[32m+[m
+[32m+[m
+[32m+[m[32mclass InvalidSourceParser:[m
+[32m+[m[32m    """Intentionally missing SourceParser.analyze."""[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef test_mock_application_registers_all_runtime_agents() -> None:[m
+[32m+[m[32m    services = build_mock_application()[m
+[32m+[m
+[32m+[m[32m    assert services.agent_registry.list_agents() == [[m
+[32m+[m[32m        AgentRoute.PLANNER.value,[m
+[32m+[m[32m        AgentRoute.SOURCE_ANALYSIS.value,[m
+[32m+[m[32m        AgentRoute.BINARY_ANALYSIS.value,[m
+[32m+[m[32m        AgentRoute.FUZZ.value,[m
+[32m+[m[32m        AgentRoute.VERIFICATION.value,[m
+[32m+[m[32m        AgentRoute.REVIEWER.value,[m
+[32m+[m[32m        AgentRoute.REPORT.value,[m
+[32m+[m[32m    ][m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef test_mock_application_registers_expected_capabilities() -> None:[m
+[32m+[m[32m    services = build_mock_application()[m
+[32m+[m
+[32m+[m[32m    assert services.tool_registry.names() == [[m
+[32m+[m[32m        CapabilityName.SOURCE_PARSE.value,[m
+[32m+[m[32m        CapabilityName.SOURCE_AUDIT.value,[m
+[32m+[m[32m        CapabilityName.BINARY_INSPECT.value,[m
+[32m+[m[32m        CapabilityName.FUZZ_EXECUTE.value,[m
+[32m+[m[32m        CapabilityName.VERIFICATION_VERIFY.value,[m
+[32m+[m[32m        CapabilityName.REPORT_GENERATE.value,[m
+[32m+[m[32m    ][m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef test_runtime_receives_same_tool_registry_instance() -> None:[m
+[32m+[m[32m    services = build_mock_application()[m
+[32m+[m
+[32m+[m[32m    assert ([m
+[32m+[m[32m        services.runtime.tool_registry[m
+[32m+[m[32m        is services.tool_registry[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef test_runtime_policy_is_built_from_settings() -> None:[m
+[32m+[m[32m    services = build_mock_application()[m
+[32m+[m
+[32m+[m[32m    assert ([m
+[32m+[m[32m        services.runtime_policy.max_agent_steps[m
+[32m+[m[32m        == services.settings.max_agent_steps[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    assert ([m
+[32m+[m[32m        services.runtime_policy.max_route_repeats[m
+[32m+[m[32m        == services.settings.max_route_repeats[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    assert ([m
+[32m+[m[32m        services.runtime_policy.max_analysis_retries[m
+[32m+[m[32m        == services.settings.max_analysis_retries[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef test_capability_can_replace_mock_without_runtime_change() -> None:[m
+[32m+[m[32m    fake_parser = FakeSourceParser()[m
+[32m+[m
+[32m+[m[32m    capabilities = replace([m
+[32m+[m[32m        build_mock_capabilities(),[m
+[32m+[m[32m        source_parser=fake_parser,[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    services = build_application([m
+[32m+[m[32m        capabilities[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    source_agent = services.agent_registry.get([m
+[32m+[m[32m        AgentRoute.SOURCE_ANALYSIS.value[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    assert ([m
+[32m+[m[32m        services.capabilities.source_parser[m
+[32m+[m[32m        is fake_parser[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    assert ([m
+[32m+[m[32m        source_agent.parser[m
+[32m+[m[32m        is fake_parser[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    tool = services.tool_registry.get([m
+[32m+[m[32m        CapabilityName.SOURCE_PARSE.value[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    assert ([m
+[32m+[m[32m        tool.adapter.__self__[m
+[32m+[m[32m        is fake_parser[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef test_invalid_capability_fails_during_composition() -> None:[m
+[32m+[m[32m    capabilities = build_mock_capabilities()[m
+[32m+[m
+[32m+[m[32m    with pytest.raises([m
+[32m+[m[32m        TypeError,[m
+[32m+[m[32m        match="source_parser",[m
+[32m+[m[32m    ):[m
+[32m+[m[32m        replace([m
+[32m+[m[32m            capabilities,[m
+[32m+[m[32m            source_parser=InvalidSourceParser(),[m
+[32m+[m[32m        )[m
+\ No newline at end of file[m
+[1mdiff --git a/tests/unit/test_tool_registry.py b/tests/unit/test_tool_registry.py[m
+[1mnew file mode 100644[m
+[1mindex 0000000..585b9c5[m
+[1m--- /dev/null[m
+[1m+++ b/tests/unit/test_tool_registry.py[m
+[36m@@ -0,0 +1,156 @@[m
+[32m+[m[32mimport pytest[m
+[32m+[m
+[32m+[m[32mfrom vulnagent.agent_runtime import ([m
+[32m+[m[32m    CapabilityName,[m
+[32m+[m[32m    ToolRegistry,[m
+[32m+[m[32m    ToolSpec,[m
+[32m+[m[32m)[m
+[32m+[m[32mfrom vulnagent.agent_runtime.errors import ([m
+[32m+[m[32m    ToolRegistrationError,[m
+[32m+[m[32m)[m
+[32m+[m
+[32m+[m
+[32m+[m[32masync def _adapter([m
+[32m+[m[32m    value: int,[m
+[32m+[m[32m) -> int:[m
+[32m+[m[32m    return value + 1[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef _tool([m
+[32m+[m[32m    name: str,[m
+[32m+[m[32m) -> ToolSpec:[m
+[32m+[m[32m    return ToolSpec([m
+[32m+[m[32m        name=name,[m
+[32m+[m[32m        description="test capability",[m
+[32m+[m[32m        adapter=_adapter,[m
+[32m+[m[32m        owner="P1",[m
+[32m+[m[32m        capability_type="test",[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m
+[32m+[m[32m@pytest.mark.asyncio[m
+[32m+[m[32masync def test_register_and_resolve_tool() -> None:[m
+[32m+[m[32m    registry = ToolRegistry()[m
+[32m+[m
+[32m+[m[32m    registry.register([m
+[32m+[m[32m        _tool([m
+[32m+[m[32m            CapabilityName.SOURCE_PARSE.value[m
+[32m+[m[32m        )[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    tool = registry.get([m
+[32m+[m[32m        CapabilityName.SOURCE_PARSE.value[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    assert await tool.adapter(1) == 2[m
+[32m+[m
+[32m+[m[32m    assert registry.names() == [[m
+[32m+[m[32m        "source.parse"[m
+[32m+[m[32m    ][m
+[32m+[m
+[32m+[m[32m    assert "source.parse" in registry[m
+[32m+[m[32m    assert len(registry) == 1[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef test_duplicate_tool_rejected() -> None:[m
+[32m+[m[32m    registry = ToolRegistry()[m
+[32m+[m
+[32m+[m[32m    registry.register([m
+[32m+[m[32m        _tool("source.parse")[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    with pytest.raises([m
+[32m+[m[32m        ToolRegistrationError,[m
+[32m+[m[32m        match="Tool already registered",[m
+[32m+[m[32m    ):[m
+[32m+[m[32m        registry.register([m
+[32m+[m[32m            _tool("source.parse")[m
+[32m+[m[32m        )[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef test_register_many_is_atomic() -> None:[m
+[32m+[m[32m    registry = ToolRegistry()[m
+[32m+[m
+[32m+[m[32m    registry.register([m
+[32m+[m[32m        _tool("source.parse")[m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    with pytest.raises([m
+[32m+[m[32m        ToolRegistrationError,[m
+[32m+[m[32m        match="Tool already registered",[m
+[32m+[m[32m    ):[m
+[32m+[m[32m        registry.register_many([m
+[32m+[m[32m            [[m
+[32m+[m[32m                _tool("source.parse"),[m
+[32m+[m[32m                _tool("source.audit"),[m
+[32m+[m[32m            ][m
+[32m+[m[32m        )[m
+[32m+[m
+[32m+[m[32m    assert registry.names() == [[m
+[32m+[m[32m        "source.parse"[m
+[32m+[m[32m    ][m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef test_duplicate_inside_batch_rejected() -> None:[m
+[32m+[m[32m    registry = ToolRegistry()[m
+[32m+[m
+[32m+[m[32m    with pytest.raises([m
+[32m+[m[32m        ToolRegistrationError,[m
+[32m+[m[32m        match="Duplicate tool",[m
+[32m+[m[32m    ):[m
+[32m+[m[32m        registry.register_many([m
+[32m+[m[32m            [[m
+[32m+[m[32m                _tool("source.parse"),[m
+[32m+[m[32m                _tool("source.parse"),[m
+[32m+[m[32m            ][m
+[32m+[m[32m        )[m
+[32m+[m
+[32m+[m[32m    assert len(registry) == 0[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef test_unknown_tool_rejected() -> None:[m
+[32m+[m[32m    registry = ToolRegistry()[m
+[32m+[m
+[32m+[m[32m    with pytest.raises([m
+[32m+[m[32m        ToolRegistrationError,[m
+[32m+[m[32m        match="Unknown tool",[m
+[32m+[m[32m    ):[m
+[32m+[m[32m        registry.get([m
+[32m+[m[32m            "source.parse"[m
+[32m+[m[32m        )[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef test_invalid_logical_name_rejected() -> None:[m
+[32m+[m[32m    with pytest.raises([m
+[32m+[m[32m        ToolRegistrationError,[m
+[32m+[m[32m        match="Invalid logical tool name",[m
+[32m+[m[32m    ):[m
+[32m+[m[32m        _tool([m
+[32m+[m[32m            "source_parse"[m
+[32m+[m[32m        )[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef test_require_multiple_tools() -> None:[m
+[32m+[m[32m    registry = ToolRegistry()[m
+[32m+[m
+[32m+[m[32m    registry.register_many([m
+[32m+[m[32m        [[m
+[32m+[m[32m            _tool("source.parse"),[m
+[32m+[m[32m            _tool("source.audit"),[m
+[32m+[m[32m        ][m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    tools = registry.require([m
+[32m+[m[32m        [[m
+[32m+[m[32m            "source.parse",[m
+[32m+[m[32m            "source.audit",[m
+[32m+[m[32m        ][m
+[32m+[m[32m    )[m
+[32m+[m
+[32m+[m[32m    assert [[m
+[32m+[m[32m        tool.name[m
+[32m+[m[32m        for tool in tools[m
+[32m+[m[32m    ] == [[m
+[32m+[m[32m        "source.parse",[m
+[32m+[m[32m        "source.audit",[m
+[32m+[m[32m    ][m
+\ No newline at end of file[m
