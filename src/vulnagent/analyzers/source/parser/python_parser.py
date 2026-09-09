@@ -12,6 +12,8 @@ from typing import Any, Iterable
 
 from vulnagent.contracts import ProjectInput, SourceAnalysisResult
 
+from .python_resolver import resolve_call_graph_for_files
+
 LOGGER = logging.getLogger(__name__)
 
 IGNORED_DIRECTORY_NAMES = frozenset(
@@ -197,6 +199,64 @@ def _parse_error(file_path: str, error: Exception) -> dict[str, Any]:
     }
 
 
+def _import_entries(tree: ast.AST) -> list[dict[str, Any]]:
+    """Collect import statements with source locations.
+
+    Each alias becomes one entry so callers can attribute lines/columns to a
+    single bound name.  ``module`` is the imported module as written (without
+    relative dots); relative imports are described by ``level``.
+    """
+    entries: list[dict[str, Any]] = []
+
+    def add(
+        *,
+        is_from: bool,
+        level: int,
+        module: str | None,
+        name: str,
+        asname: str | None,
+        line: int | None,
+        column: int | None,
+    ) -> None:
+        entries.append(
+            {
+                "name": name,
+                "asname": asname,
+                "module": module or "",
+                "level": level,
+                "is_from": is_from,
+                "is_relative": level > 0,
+                "line": line,
+                "column": column,
+            }
+        )
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                add(
+                    is_from=False,
+                    level=0,
+                    module=alias.name,
+                    name=alias.name,
+                    asname=alias.asname,
+                    line=node.lineno,
+                    column=node.col_offset,
+                )
+        elif isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                add(
+                    is_from=True,
+                    level=node.level,
+                    module=node.module,
+                    name=alias.name,
+                    asname=alias.asname,
+                    line=node.lineno,
+                    column=node.col_offset,
+                )
+    return entries
+
+
 @dataclass(frozen=True, slots=True)
 class PythonFileParse:
     """Result of parsing a single Python source file.
@@ -207,8 +267,10 @@ class PythonFileParse:
     """
 
     displayed_path: str
+    module: str = ""
     symbols: list[dict[str, Any]] = field(default_factory=list)
     dependencies: set[str] = field(default_factory=set)
+    imports: list[dict[str, Any]] = field(default_factory=list)
     call_graph: dict[str, set[str]] = field(default_factory=dict)
     error: dict[str, Any] | None = None
     parsed: bool = False
@@ -232,13 +294,15 @@ def parse_python_file(path: Path, displayed_path: str) -> PythonFileParse:
             error=_parse_error(displayed_path, error),
         )
 
-    relative_path = Path(displayed_path)
-    visitor = _SymbolVisitor(_module_name(relative_path), displayed_path)
+    module = _module_name(Path(displayed_path))
+    visitor = _SymbolVisitor(module, displayed_path)
     visitor.visit(tree)
     return PythonFileParse(
         displayed_path=displayed_path,
+        module=module,
         symbols=visitor.symbols,
         dependencies=_dependencies(tree),
+        imports=_import_entries(tree),
         call_graph=visitor.call_graph,
         parsed=True,
     )
@@ -252,7 +316,7 @@ def _merge_call_graph(
 
 
 class PythonSourceParser:
-    """Scan Python files and return symbols, imports, and a basic call graph."""
+    """Scan Python files and return symbols, imports and a resolved call graph."""
 
     async def analyze(self, request: ProjectInput) -> SourceAnalysisResult:
         """Analyze a project directory or one Python file without executing it."""
@@ -272,7 +336,9 @@ class PythonSourceParser:
                 task_id=request.task_id,
                 target_id=request.target_id,
                 project_path=request.project_path,
-                metadata=self._metadata(0, 0, parse_errors, scanned=False),
+                metadata=self._metadata(
+                    0, 0, parse_errors, imports={}, scanned=False
+                ),
             )
 
         root = root.resolve()
@@ -282,6 +348,7 @@ class PythonSourceParser:
         call_graph: dict[str, set[str]] = {}
         parsed_file_count = 0
         displayed_files = [_display_path(path, root) for path in python_files]
+        parsed_files: list[PythonFileParse] = []
 
         for path, displayed_path in zip(python_files, displayed_files):
             parsed_file = parse_python_file(path, displayed_path)
@@ -295,6 +362,7 @@ class PythonSourceParser:
                 continue
 
             parsed_file_count += 1
+            parsed_files.append(parsed_file)
             symbols.extend(parsed_file.symbols)
             dependencies.update(parsed_file.dependencies)
             _merge_call_graph(call_graph, parsed_file.call_graph)
@@ -306,9 +374,9 @@ class PythonSourceParser:
                 str(symbol["qualified_name"]),
             )
         )
-        serialized_call_graph = {
-            caller: sorted(callees) for caller, callees in sorted(call_graph.items())
-        }
+        resolved_call_graph = resolve_call_graph_for_files(
+            call_graph, symbols, parsed_files
+        )
         return SourceAnalysisResult(
             task_id=request.task_id,
             target_id=request.target_id,
@@ -317,9 +385,13 @@ class PythonSourceParser:
             files=displayed_files,
             symbols=symbols,
             dependencies=sorted(dependencies),
-            call_graph=serialized_call_graph,
+            call_graph=resolved_call_graph,
             metadata=self._metadata(
-                len(python_files), parsed_file_count, parse_errors, scanned=True
+                len(python_files),
+                parsed_file_count,
+                parse_errors,
+                imports={file.displayed_path: file.imports for file in parsed_files},
+                scanned=True,
             ),
         )
 
@@ -329,6 +401,7 @@ class PythonSourceParser:
         parsed_file_count: int,
         parse_errors: Iterable[dict[str, Any]],
         *,
+        imports: dict[str, list[dict[str, Any]]],
         scanned: bool,
     ) -> dict[str, Any]:
         errors = list(parse_errors)
@@ -337,6 +410,7 @@ class PythonSourceParser:
             "scanned": scanned,
             "file_count": file_count,
             "parsed_file_count": parsed_file_count,
+            "imports": imports,
             "error_count": len(errors),
             "parse_errors": errors,
             "ignored_directories": sorted(IGNORED_DIRECTORY_NAMES),

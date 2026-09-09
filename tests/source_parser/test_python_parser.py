@@ -69,9 +69,11 @@ class Service:
         "main.Service.finish": ("method", True),
     }
     assert result.dependencies == ["os", "package.helpers"]
+    # Call targets are resolved to project-internal qualified names when a
+    # definition exists; external calls keep their syntactic name.
     assert result.call_graph == {
         "main.Service.finish": ["utility"],
-        "main.Service.run": ["helper", "self.finish"],
+        "main.Service.run": ["main.Service.finish", "main.helper"],
         "main.helper": ["os.getcwd"],
     }
 

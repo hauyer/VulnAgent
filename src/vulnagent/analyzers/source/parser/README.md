@@ -12,7 +12,7 @@
 - 大文件（默认 > `max_file_bytes`，可由 `ProjectInput.metadata.max_file_bytes` 调整）跳过并计数，其它无源码扩展名的文件计入 `metadata.other_file_count`；
 - 单文件语法/读取错误写入 `metadata.parse_errors`，不影响其它文件；路径不存在返回带 `PathNotFoundError` 的空结果而非抛异常。
 
-`PythonSourceParser` 是单语言（Python）解析器，保留为兼容入口；其内部按文件解析逻辑已抽为 `python_parser.parse_python_file`，供项目级解析器复用。
+`PythonSourceParser` 是单语言（Python）解析器，保留为兼容入口；其内部按文件解析逻辑已抽为 `python_parser.parse_python_file`，供项目级解析器复用。二者对同一 Python 项目产出**一致的** `call_graph` 语义与 import 元数据。
 
 `MockSourceParser` 继续保留，现有集成链路可在 composition root 明确切换后再采用真实解析器。
 
@@ -21,3 +21,29 @@
 - `languages.py` 维护可识别语言注册表（Python、C、C++、Java、JavaScript、TypeScript、Go、Rust、PHP、Ruby、C#、Kotlin、Swift）。
 - 语言 id 统一小写（`python`/`c`/`cpp`/...）；`SourceProjectParser` 的 `languages` 字段即小写 id 列表。
 - 注意：`PythonSourceParser`（兼容入口）历史语义为显示名 `["Python"]`，二者不可混读；V0.3 及以后的新集成统一使用 `SourceProjectParser`。
+
+## import 元数据（审计可消费）
+
+`SourceAnalysisResult.metadata["imports"]` 是 `{文件(相对路径): [条目...]}`。每条含：
+
+- `name`：绑定的顶层名称（`from x import y` 为 `y`，`import x` 为 `x`）；
+- `asname`：别名（无则 `None`）；
+- `module`：被导入模块名（不含相对点号；相对导入为 `""`）；
+- `level`：相对导入层级（0 = 绝对导入）；
+- `is_from` / `is_relative`：是否为 `from ... import` / 相对导入；
+- `line` / `column`：语句位置。
+
+`SourceAnalysisResult.dependencies`（字符串列表）保持向后兼容。
+
+## call_graph 解析语义
+
+`call_graph`：调用方（模块限定名）→ 被调目标列表；**best-effort 解析到项目内定义符号的 qualified name**（`python_resolver.py`）：
+
+- `self.x`/`cls.x` → 类内方法定义（`main.Service.run` → `main.Service.finish`）；
+- 裸名 → 同模块模块级定义或 `from x import y` 导入且项目内可找到的定义（`y` → `x.y`）；
+- 别名点号调用（`import a.b as ab; ab.f()`）→ 用别名目标模块替换；
+- **解析不到**的外部/动态调用保留原始语法名（如 `os.getcwd`、`subprocess.run`）；
+- 无调用的函数保留空列表键。
+
+已知限制：相对导入 base 依据模块名近似推导；`import a.b`（无别名）不建绑定（全路径调用按 def 精确匹配）；通过变量/动态派发的调用不解析。解析只会在项目内确证定义存在时才改写，不发明调用边。
+
