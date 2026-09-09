@@ -64,6 +64,115 @@ class _CallCollector(ast.NodeVisitor):
         return
 
 
+def _annotation_name(value: ast.expr | None) -> str | None:
+    """Render a type annotation as source text (``None`` when absent)."""
+    if value is None:
+        return None
+    try:
+        return ast.unparse(value)
+    except Exception:  # pragma: no cover - defensive, any expr is unparseable
+        return None
+
+
+def _expression_display(value: ast.expr) -> str:
+    """Readable source text for a decorator/base expression."""
+    name = _expression_name(value)
+    if name:
+        return name
+    try:
+        return ast.unparse(value)
+    except Exception:  # pragma: no cover - defensive
+        return "<expr>"
+
+
+def _decorator_names(node: ast.AST) -> list[str]:
+    return [_expression_display(value) for value in node.decorator_list]
+
+
+def _parameter_entries(arguments: ast.arguments) -> list[dict[str, Any]]:
+    """Flatten a function/method argument list into JSON-safe records."""
+    entries: list[dict[str, Any]] = []
+    positional = [*arguments.posonlyargs, *arguments.args]
+    first_default = len(positional) - len(arguments.defaults)
+    for index, argument in enumerate(positional):
+        kind = (
+            "positional_only"
+            if index < len(arguments.posonlyargs)
+            else "positional_or_keyword"
+        )
+        entries.append(
+            {
+                "name": argument.arg,
+                "kind": kind,
+                "has_default": index >= first_default,
+                "annotation": _annotation_name(argument.annotation),
+            }
+        )
+    if arguments.vararg is not None:
+        entries.append(
+            {
+                "name": arguments.vararg.arg,
+                "kind": "vararg",
+                "has_default": False,
+                "annotation": _annotation_name(arguments.vararg.annotation),
+            }
+        )
+    for index, argument in enumerate(arguments.kwonlyargs):
+        entries.append(
+            {
+                "name": argument.arg,
+                "kind": "keyword_only",
+                "has_default": arguments.kw_defaults[index] is not None,
+                "annotation": _annotation_name(argument.annotation),
+            }
+        )
+    if arguments.kwarg is not None:
+        entries.append(
+            {
+                "name": arguments.kwarg.arg,
+                "kind": "kwarg",
+                "has_default": False,
+                "annotation": _annotation_name(arguments.kwarg.annotation),
+            }
+        )
+    return entries
+
+
+def _is_main_guard(test: ast.expr) -> bool:
+    """True for the canonical ``__name__ == "__main__"`` guard expression."""
+    return (
+        isinstance(test, ast.Compare)
+        and len(test.ops) == 1
+        and isinstance(test.ops[0], ast.Eq)
+        and isinstance(test.left, ast.Name)
+        and test.left.id == "__name__"
+        and len(test.comparators) == 1
+        and isinstance(test.comparators[0], ast.Constant)
+        and test.comparators[0].value == "__main__"
+    )
+
+
+def _main_guard_line(tree: ast.AST) -> int | None:
+    """Line of the top-level ``if __name__ == "__main__"`` block, if any."""
+    if not isinstance(tree, ast.Module):
+        return None
+    for statement in tree.body:
+        if isinstance(statement, ast.If) and _is_main_guard(statement.test):
+            return statement.lineno
+    return None
+
+
+def _entry_points(parsed_files: Iterable[Any]) -> list[dict[str, Any]]:
+    """Files that define an executable entry point, sorted deterministically."""
+    points = [
+        {"file": parsed_file.displayed_path, "line": parsed_file.entry_point}
+        for parsed_file in parsed_files
+        if parsed_file.entry_point is not None
+    ]
+    points.sort(key=lambda point: (str(point["file"]), int(point["line"])))
+    return points
+
+
 class _SymbolVisitor(ast.NodeVisitor):
     """Extract classes, functions, methods, and their direct call sites."""
 
@@ -97,7 +206,12 @@ class _SymbolVisitor(ast.NodeVisitor):
         }
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
-        self.symbols.append(self._symbol(node, kind="class"))
+        symbol = self._symbol(node, kind="class")
+        symbol["bases"] = [
+            _expression_display(base) for base in node.bases
+        ]
+        symbol["decorators"] = _decorator_names(node)
+        self.symbols.append(symbol)
         self.scope.append((node.name, "class"))
         for statement in node.body:
             self.visit(statement)
@@ -117,6 +231,9 @@ class _SymbolVisitor(ast.NodeVisitor):
     ) -> None:
         kind = "method" if self.scope and self.scope[-1][1] == "class" else "function"
         symbol = self._symbol(node, kind=kind, is_async=is_async)
+        symbol["decorators"] = _decorator_names(node)
+        symbol["parameters"] = _parameter_entries(node.args)
+        symbol["return_annotation"] = _annotation_name(node.returns)
         self.symbols.append(symbol)
 
         collector = _CallCollector()
@@ -272,6 +389,7 @@ class PythonFileParse:
     dependencies: set[str] = field(default_factory=set)
     imports: list[dict[str, Any]] = field(default_factory=list)
     call_graph: dict[str, set[str]] = field(default_factory=dict)
+    entry_point: int | None = None
     error: dict[str, Any] | None = None
     parsed: bool = False
 
@@ -304,6 +422,7 @@ def parse_python_file(path: Path, displayed_path: str) -> PythonFileParse:
         dependencies=_dependencies(tree),
         imports=_import_entries(tree),
         call_graph=visitor.call_graph,
+        entry_point=_main_guard_line(tree),
         parsed=True,
     )
 
@@ -337,7 +456,12 @@ class PythonSourceParser:
                 target_id=request.target_id,
                 project_path=request.project_path,
                 metadata=self._metadata(
-                    0, 0, parse_errors, imports={}, scanned=False
+                    0,
+                    0,
+                    parse_errors,
+                    imports={},
+                    entry_points=[],
+                    scanned=False,
                 ),
             )
 
@@ -391,6 +515,7 @@ class PythonSourceParser:
                 parsed_file_count,
                 parse_errors,
                 imports={file.displayed_path: file.imports for file in parsed_files},
+                entry_points=_entry_points(parsed_files),
                 scanned=True,
             ),
         )
@@ -402,6 +527,7 @@ class PythonSourceParser:
         parse_errors: Iterable[dict[str, Any]],
         *,
         imports: dict[str, list[dict[str, Any]]],
+        entry_points: list[dict[str, Any]],
         scanned: bool,
     ) -> dict[str, Any]:
         errors = list(parse_errors)
@@ -411,6 +537,7 @@ class PythonSourceParser:
             "file_count": file_count,
             "parsed_file_count": parsed_file_count,
             "imports": imports,
+            "entry_points": entry_points,
             "error_count": len(errors),
             "parse_errors": errors,
             "ignored_directories": sorted(IGNORED_DIRECTORY_NAMES),

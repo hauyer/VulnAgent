@@ -35,6 +35,15 @@
 
 `SourceAnalysisResult.dependencies`（字符串列表）保持向后兼容。
 
+## 符号结构索引
+
+`symbols` 每条（函数/方法/类）除 `name/qualified_name/kind/file/line/end_line/column/is_async` 外，另含：
+
+- 函数/方法：`decorators`（装饰器源码文本列表，如 `["route('/run')"]`）、`parameters`（每个参数：`name`/`kind`（positional_or_keyword|positional_only|vararg|keyword_only|kwarg）/`has_default`/`annotation`，按源码顺序）、`return_annotation`；
+- 类：`bases`（基类表达式列表）、`decorators`。
+
+`metadata["entry_points"]`：含顶层 `if __name__ == "__main__"` 保护的文件与行号列表（`[{file, line}]`），可辅助定位程序入口/不可信输入来源。
+
 ## call_graph 解析语义
 
 `call_graph`：调用方（模块限定名）→ 被调目标列表；**best-effort 解析到项目内定义符号的 qualified name**（`python_resolver.py`）：
