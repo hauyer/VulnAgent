@@ -218,6 +218,14 @@ class SourceProjectParser:
         resolved_call_graph = resolve_call_graph_for_files(
             call_graph, symbols, parsed_files
         )
+        entry_points = sorted(
+            (
+                {"file": file.displayed_path, "line": file.entry_point}
+                for file in parsed_files
+                if file.entry_point is not None
+            ),
+            key=lambda point: (str(point["file"]), int(point["line"])),
+        )
 
         languages = sorted(counts) if counts else []
         unsupported = sorted(
@@ -258,6 +266,7 @@ class SourceProjectParser:
                     parsed_file.displayed_path: parsed_file.imports
                     for parsed_file in parsed_files
                 },
+                "entry_points": entry_points,
                 "error_count": len(parse_errors),
                 "parse_errors": parse_errors,
                 "ignored_directories": sorted(IGNORED_DIRECTORY_NAMES),
@@ -291,6 +300,8 @@ class SourceProjectParser:
                 "other_file_count": 0,
                 "skipped_oversized_files": 0,
                 "max_file_bytes": 0,
+                "imports": {},
+                "entry_points": [],
                 "error_count": 1,
                 "parse_errors": [error],
                 "ignored_directories": sorted(IGNORED_DIRECTORY_NAMES),

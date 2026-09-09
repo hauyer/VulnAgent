@@ -1,6 +1,23 @@
 # Source Parser（成员 2）
 
-输入 `ProjectInput`，输出 `SourceAnalysisResult`。负责项目导入、语言、AST、符号、依赖和基础调用图。只允许依赖 Contracts、工具接口和 Utils；禁止判断漏洞、调用 Verification/Fuzz、具体 LLM 厂商或生成确认漏洞。测试入口：`pytest tests/contracts tests/source_parser`。
+输入 `ProjectInput`，输出 `SourceAnalysisResult`。负责**项目导入、语言识别、目录解析、AST/函数/类索引、依赖和基础调用图**。只允许依赖 Contracts、工具接口和 Utils；禁止判断漏洞、调用 Verification/Fuzz、具体 LLM 厂商或生成确认漏洞。测试入口：`pytest tests/contracts tests/source_parser`。
+
+组件能力总览（P2 交付面）：
+
+| 能力 | 实现 | 说明 |
+| --- | --- | --- |
+| 项目导入 | `ProjectImporter` | 本地目录/文件直用；`.zip` 安全解压（防 zip-slip、限大小）；Git 仓库 URL 浅克隆（默认拒绝，需 `metadata["allow_git_clone"]=true`） |
+| 语言识别 | `languages.py` / `SourceProjectParser` | 13 种语言注册表、项目语言集合与计数 |
+| 目录解析/扫描 | `SourceProjectParser` | 忽略规则、大小限额、编码/语法/遍历错误容错 |
+| Python 结构解析 | `python_parser.py` | 函数/类/方法符号（继承、装饰器、参数、注解）、import 位置、依赖、调用图解析、入口点 |
+| 统一输出 | 公共 `SourceParser` Protocol | `SourceAnalysisResult`（frozen Contract，未修改） |
+
+## 项目导入（ProjectImporter）
+
+- 本地目录/单文件：直接使用（`origin_type="path"`），检测到 `.git` 时 `vcs="git"`。
+- `.zip`：解压到 `destination`（未提供时创建托管临时目录，可 `importer.cleanup()` 清理）；拒绝 `..`/绝对路径逃逸成员（zip-slip），可选 `max_extract_bytes` 限制。
+- Git 仓库 URL（`https/http/git/ssh/file` 等）：默认**拒绝**克隆，需 `ProjectInput.metadata["allow_git_clone"]=true`；`--depth 1` 浅克隆、禁用终端凭据提示、超时可控（`git_clone_timeout_seconds`）。
+- 导入只物化输入，不执行任何项目代码。
 
 ## 解析器
 
@@ -34,6 +51,15 @@
 - `line` / `column`：语句位置。
 
 `SourceAnalysisResult.dependencies`（字符串列表）保持向后兼容。
+
+## 符号结构索引
+
+`symbols` 每条（函数/方法/类）除 `name/qualified_name/kind/file/line/end_line/column/is_async` 外，另含：
+
+- 函数/方法：`decorators`（装饰器源码文本列表，如 `["route('/run')"]`）、`parameters`（每个参数：`name`/`kind`（positional_or_keyword|positional_only|vararg|keyword_only|kwarg）/`has_default`/`annotation`，按源码顺序）、`return_annotation`；
+- 类：`bases`（基类表达式列表）、`decorators`。
+
+`metadata["entry_points"]`：含顶层 `if __name__ == "__main__"` 保护的文件与行号列表（`[{file, line}]`），可辅助定位程序入口/不可信输入来源。
 
 ## call_graph 解析语义
 
