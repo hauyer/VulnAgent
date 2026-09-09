@@ -14,5 +14,9 @@ jobs:
           python-version: "3.11"
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -e ".[test]"
-      - run: pytest
-
+      - name: Contract gate
+        run: python -m pytest tests/contracts -q
+      - name: Architecture gate
+        run: python -m pytest tests/architecture -q
+      - name: Full test gate
+        run: python -m pytest -q

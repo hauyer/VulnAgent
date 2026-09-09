@@ -16,6 +16,9 @@ class EventType(str, Enum):
     EVIDENCE_ADDED = "evidence_added"
     REPORT_GENERATED = "report_generated"
     TASK_FAILED = "task_failed"
+    AGENT_ROUTED = "agent_routed"
+    AGENT_RETRY = "agent_retry"
+    REVIEW_COMPLETED = "review_completed"
 
 class DomainEvent(ContractModel):
     event_type: EventType

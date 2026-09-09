@@ -64,11 +64,11 @@ Target
 
 当前工程阶段为：
 
-**V0.1 — Architecture Skeleton**
+**V0.2 — Multi-Agent Architecture Foundation**
 
-V0.1 的目标不是完成真实漏洞挖掘能力，而是建立稳定、可测试、可扩展的工程骨架。
+V0.2 在冻结 V0.1 公共协议的基础上，建立动态、可追踪、有界且能力可替换的多 Agent 运行时。
 
-V0.1 必须完成：
+V0.2 必须保持并完成：
 
 1. 项目目录结构
 2. 统一配置系统
@@ -86,8 +86,13 @@ V0.1 必须完成：
 14. CI
 15. 日志体系
 16. 基础文档
+17. Agent Runtime / LangGraph 状态图
+18. Supervisor 结构化路由与确定性回退
+19. Tool Registry
+20. AgentMessage / DomainEvent Trace
+21. Agent 最大步数与重复路由限制
 
-V0.1 不要求完成：
+V0.2 不要求完成：
 
 - 完整污点分析
 - 完整二进制反编译
@@ -103,8 +108,7 @@ V0.1 不要求完成：
 负责：
 
 - Task 生命周期
-- Pipeline 调度
-- Agent 调度
+- Task 生命周期与 Pipeline 单阶段执行封装
 - 状态管理
 - 事件传递
 - 任务上下文
@@ -112,6 +116,12 @@ V0.1 不要求完成：
 目录：
 
 `src/vulnagent/core/`
+
+### Agent Runtime
+
+负责 LangGraph 状态图、Supervisor、结构化路由、有限循环、逻辑工具注册和运行轨迹。`RuntimeState` 只保存编排状态；跨 Agent 调度统一经过本层，不能直接修改数据库或 TaskStatus。
+
+目录：`src/vulnagent/agent_runtime/`
 
 ### Agents
 
@@ -336,7 +346,7 @@ Fuzz 模块当前只允许：
 
 ## 11. 漏洞验证安全原则
 
-V0.1 阶段不要实现自动攻击能力。
+V0.2 阶段不要实现自动攻击能力。
 
 PoC / Exploit 相关模块当前只允许提供：
 
@@ -482,7 +492,7 @@ chore(scope): description
 - `tests/integration/`
 - `tests/system/`
 
-V0.1 最低要求：`pytest` 能够完整通过。
+V0.2 最低要求：`python -m pytest` 能够完整通过。
 
 ## 19. Definition of Done
 
