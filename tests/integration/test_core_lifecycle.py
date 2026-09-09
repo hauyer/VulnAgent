@@ -1,4 +1,5 @@
 import asyncio
+from typing import Any
 
 import pytest
 
@@ -8,6 +9,7 @@ from vulnagent.contracts import (
     EventType,
     Target,
     TargetType,
+    Task,
     TaskStatus,
 )
 from vulnagent.core.orchestrator import (
@@ -176,6 +178,45 @@ async def test_runtime_failure_reaches_failed() -> None:
     assert not orchestrator.is_running(
         task.task_id
     )
+
+
+class FailedStateWriteManager(InMemoryTaskManager):
+    """Task manager that cannot persist the terminal FAILED update."""
+
+    def update_task(
+        self,
+        task_id: str,
+        *,
+        status: TaskStatus | None = None,
+        error: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> Task:
+        if status is TaskStatus.FAILED:
+            raise RuntimeError("synthetic failed-state persistence error")
+        return super().update_task(
+            task_id,
+            status=status,
+            error=error,
+            metadata=metadata,
+        )
+
+
+async def test_failed_state_persistence_does_not_mask_original_error() -> None:
+    manager = FailedStateWriteManager()
+    orchestrator = Orchestrator(
+        manager,
+        InMemoryEvidenceStore(),
+        FailingRuntime(),
+    )
+    task = manager.create_task(make_target())
+
+    with pytest.raises(
+        RuntimeError,
+        match="synthetic runtime failure",
+    ):
+        await orchestrator.run(task.task_id)
+
+    assert not orchestrator.is_running(task.task_id)
 
 
 async def test_failure_generates_task_failed_event() -> None:

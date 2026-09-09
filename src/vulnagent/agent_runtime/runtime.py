@@ -17,6 +17,7 @@ from vulnagent.contracts import (
     TaskStatus,
 )
 from vulnagent.core.pipeline import Pipeline, PipelineStage
+from vulnagent.core.trace_safety import ensure_public_trace_payload
 from vulnagent.llm.base import BaseLLM
 from vulnagent.utils.ids import new_message_id
 
@@ -166,10 +167,25 @@ class AgentRuntime:
                         route=fallback_route,
                         reason=(
                             "supervisor execution failed: "
-                            f"{type(exc).__name__}: {exc}"
+                            f"{type(exc).__name__}"
                         ),
                         fallback_used=True,
                     )
+
+            try:
+                proposed = self._public_route_decision(proposed)
+            except ValueError:
+                fallback_route = (
+                    AgentRoute.FINISH
+                    if AgentRoute.REPORT.value
+                    in state["route_history"]
+                    else AgentRoute.REPORT
+                )
+                proposed = RouteDecision(
+                    route=fallback_route,
+                    reason="supervisor supplied non-public route metadata",
+                    fallback_used=True,
+                )
 
             # -------------------------------------------------
             # 3. Runtime independently enforces retry policy
@@ -361,6 +377,8 @@ class AgentRuntime:
                 result = await self.pipeline.execute_stage(PipelineStage(self._task_status(route), agent), context)
                 if not result.success:
                     raise ModuleExecutionError(result.error or f"Agent failed: {result.agent_name}")
+                for message in result.messages:
+                    ensure_public_trace_payload(message.payload)
                 self._validate_finding_authority(route, result, context)
             except Exception as exc:
                 error_message = AgentMessage(
@@ -371,7 +389,8 @@ class AgentRuntime:
                     message_type=AgentMessageType.ERROR,
                     payload={
                         "route": route.value,
-                        "error": str(exc),
+                        "error": "agent execution failed",
+                        "error_type": type(exc).__name__,
                     },
                 )
 
@@ -386,7 +405,8 @@ class AgentRuntime:
                     {
                         "route": route.value,
                         "success": False,
-                        "error": str(exc),
+                        "error": "agent execution failed",
+                        "error_type": type(exc).__name__,
                     },
                 )
 
@@ -413,7 +433,8 @@ class AgentRuntime:
                 metadata["last_agent_error"] = {
                     "route": route.value,
                     "agent": agent.name,
-                    "error": str(exc),
+                    "error": "agent execution failed",
+                    "error_type": type(exc).__name__,
                 }
 
                 return {
@@ -495,12 +516,36 @@ class AgentRuntime:
                 self._emit(EventType.VULNERABILITY_REJECTED, task_id, result.agent_name, {"vulnerability_id": finding.vulnerability_id})
         if route is AgentRoute.REVIEWER:
             self._emit(EventType.REVIEW_COMPLETED, task_id, result.agent_name)
-        if route is AgentRoute.REPORT:
+        if route is AgentRoute.REPORT and result.reports:
             self._emit(EventType.REPORT_GENERATED, task_id, result.agent_name)
 
     def _emit(self, event_type: EventType, task_id: str, producer: str, payload: dict[str, object] | None = None) -> None:
         if self.publish_event is not None:
             self.publish_event(DomainEvent(event_type=event_type, task_id=task_id, producer=producer, payload=payload or {}))
+
+    @staticmethod
+    def _public_route_decision(
+        decision: RouteDecision,
+    ) -> RouteDecision:
+        """Keep route reasons concise and metadata structurally public."""
+
+        ensure_public_trace_payload(decision.metadata)
+
+        reason = decision.reason
+        if (
+            not isinstance(reason, str)
+            or len(reason) > 256
+            or "\n" in reason
+            or "\r" in reason
+        ):
+            reason = "supervisor supplied a non-public route reason"
+
+        return RouteDecision(
+            route=decision.route,
+            reason=reason,
+            fallback_used=decision.fallback_used,
+            metadata=dict(decision.metadata),
+        )
 
     @staticmethod
     def _task_status(route: AgentRoute) -> TaskStatus:

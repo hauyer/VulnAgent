@@ -1,4 +1,5 @@
 from typing import get_type_hints
+from collections.abc import Mapping, Sequence
 
 import pytest
 
@@ -24,6 +25,7 @@ from vulnagent.agents import (
     SourceAuditAgent,
     VerificationAgent,
 )
+from vulnagent.agents.base import BaseAgent
 from vulnagent.analyzers.binary.reverse import (
     MockBinaryReverseAnalyzer,
 )
@@ -34,6 +36,8 @@ from vulnagent.analyzers.source.parser import (
     MockSourceParser,
 )
 from vulnagent.contracts import (
+    AgentMessage,
+    AgentMessageType,
     AgentResult,
     AnalysisContext,
     EventType,
@@ -55,6 +59,29 @@ from vulnagent.verification.verifier import MockVerifier
 # ============================================================
 # Test doubles
 # ============================================================
+
+
+def nested_keys(value) -> set[str]:
+    """Collect mapping keys recursively without inspecting text values."""
+    if isinstance(value, Mapping):
+        return {
+            str(key).casefold().replace("-", "_")
+            for key in value
+        } | {
+            nested
+            for item in value.values()
+            for nested in nested_keys(item)
+        }
+    if isinstance(value, Sequence) and not isinstance(
+        value,
+        (str, bytes, bytearray),
+    ):
+        return {
+            nested
+            for item in value
+            for nested in nested_keys(item)
+        }
+    return set()
 
 
 class EmptySourceAuditor:
@@ -104,6 +131,34 @@ class ExplodingSourceAuditor:
     ) -> list[VulnerabilityCandidate]:
         raise RuntimeError(
             "source auditor boom"
+        )
+
+
+class PrivateTraceAgent(BaseAgent):
+    """Agent attempting to place a reserved private field in trace."""
+
+    name = "private_trace_agent"
+
+    async def run(
+        self,
+        task: Task,
+        context: AnalysisContext,
+    ) -> AgentResult:
+        return AgentResult(
+            agent_name=self.name,
+            messages=[
+                AgentMessage(
+                    message_id="private-message",
+                    task_id=task.task_id,
+                    sender=self.name,
+                    message_type=AgentMessageType.ANALYSIS_RESULT,
+                    payload={
+                        "summary": {
+                            "private_reasoning": "must not enter trace"
+                        }
+                    },
+                )
+            ],
         )
 
 
@@ -228,6 +283,7 @@ class ExampleToolAgent(ToolEnabledAgent):
 
 def build_runtime(
     *,
+    source_agent=None,
     source_auditor=None,
     verifier=None,
     supervisor=None,
@@ -238,9 +294,12 @@ def build_runtime(
 
     suite = AgentSuite(
         planner=PlannerAgent(),
-        source_analysis=SourceAuditAgent(
-            MockSourceParser(),
-            source_auditor or MockSourceAuditor(),
+        source_analysis=(
+            source_agent
+            or SourceAuditAgent(
+                MockSourceParser(),
+                source_auditor or MockSourceAuditor(),
+            )
         ),
         binary_analysis=BinaryAnalysisAgent(
             MockBinaryReverseAnalyzer()
@@ -1177,12 +1236,8 @@ async def test_agent_exception_falls_back_to_report_with_trace() -> None:
         == "source_analysis"
     )
 
-    assert (
-        "source auditor boom"
-        in last_error.payload[
-            "error"
-        ]
-    )
+    assert last_error.payload["error"] == "agent execution failed"
+    assert last_error.payload["error_type"] == "RuntimeError"
 
     metadata = result.state[
         "runtime_metadata"
@@ -1209,12 +1264,10 @@ async def test_agent_exception_falls_back_to_report_with_trace() -> None:
         == "source_audit"
     )
 
-    assert (
-        "source auditor boom"
-        in metadata[
-            "last_agent_error"
-        ]["error"]
+    assert metadata["last_agent_error"]["error"] == (
+        "agent execution failed"
     )
+    assert metadata["last_agent_error"]["error_type"] == "RuntimeError"
 
     assert (
         result.state[
@@ -1341,10 +1394,9 @@ async def test_runtime_rejects_final_status_from_discovery() -> None:
 
     assert error_messages
 
-    assert (
-        "Discovery agent cannot emit final status"
-        in error_messages[-1]
-        .payload["error"]
+    assert error_messages[-1].payload["error"] == "agent execution failed"
+    assert error_messages[-1].payload["error_type"] == (
+        "ModuleExecutionError"
     )
 
 
@@ -1363,10 +1415,12 @@ async def test_only_verification_agent_applies_final_status(
 
     task = make_task()
 
+    events = []
     result = await build_runtime(
         verifier=StatusVerifier(
             status
-        )
+        ),
+        events=events,
     ).run(
         task,
         AnalysisContext(
@@ -1385,6 +1439,12 @@ async def test_only_verification_agent_applies_final_status(
     } == {
         status
     }
+
+    event_types = {event.event_type for event in events}
+    if status is VulnerabilityStatus.CONFIRMED:
+        assert EventType.VULNERABILITY_CONFIRMED in event_types
+    elif status is VulnerabilityStatus.REJECTED:
+        assert EventType.VULNERABILITY_REJECTED in event_types
 
     assert {
         item.status
@@ -1496,16 +1556,41 @@ async def test_exception_trace_contains_failed_agent_event() -> None:
         == "source_analysis"
     )
 
-    assert (
-        "source auditor boom"
-        in failed.payload[
-            "error"
-        ]
-    )
+    assert failed.payload["error"] == "agent execution failed"
+    assert failed.payload["error_type"] == "RuntimeError"
 
     assert (
         result.context.reports
     )
+
+
+async def test_private_agent_reasoning_fields_do_not_enter_trace() -> None:
+    events = []
+    task = make_task()
+
+    result = await build_runtime(
+        source_agent=PrivateTraceAgent(),
+        events=events,
+    ).run(task, AnalysisContext(task=task))
+
+    private_fields = {
+        "chain_of_thought",
+        "private_reasoning",
+        "hidden_reasoning",
+        "raw_cot",
+        "reasoning_tokens",
+    }
+    assert nested_keys(
+        [message.payload for message in result.context.messages]
+    ).isdisjoint(private_fields)
+    assert nested_keys(
+        [event.payload for event in events]
+    ).isdisjoint(private_fields)
+    assert any(
+        message.message_type is AgentMessageType.ERROR
+        for message in result.context.messages
+    )
+    assert result.context.reports
 
 
 async def test_runtime_step_count_matches_route_history() -> None:

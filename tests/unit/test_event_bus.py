@@ -1,3 +1,5 @@
+import pytest
+
 from vulnagent.contracts import (
     DomainEvent,
     EventType,
@@ -47,6 +49,28 @@ def test_history_is_isolated_copy() -> None:
     )
 
     assert second == [event]
+
+
+def test_history_events_and_payloads_are_isolated_copies() -> None:
+    bus = EventBus()
+    event = DomainEvent(
+        event_type=EventType.AGENT_ROUTED,
+        task_id="task-1",
+        producer="test",
+        payload={"route": "planner", "nested": {"attempt": 1}},
+    )
+
+    bus.publish(event)
+    event.payload["route"] = "tampered"
+
+    first = bus.list_by_task("task-1")
+    first[0].payload["nested"]["attempt"] = 99
+
+    stored = bus.list_by_task("task-1")
+    assert stored[0].payload == {
+        "route": "planner",
+        "nested": {"attempt": 1},
+    }
 
 
 def test_subscriber_receives_event() -> None:
@@ -124,3 +148,68 @@ def test_broken_subscriber_does_not_break_publish() -> None:
     assert bus.list_by_task(
         event.task_id
     ) == [event]
+
+
+def test_subscriber_mutation_is_isolated_from_history_and_peers() -> None:
+    bus = EventBus()
+    received: list[DomainEvent] = []
+
+    def mutating_callback(event: DomainEvent) -> None:
+        event.payload["route"] = "tampered"
+
+    bus.subscribe(EventType.AGENT_ROUTED, mutating_callback)
+    bus.subscribe(EventType.AGENT_ROUTED, received.append)
+
+    event = DomainEvent(
+        event_type=EventType.AGENT_ROUTED,
+        task_id="task-1",
+        producer="test",
+        payload={"route": "planner"},
+    )
+    bus.publish(event)
+
+    assert received[0].payload == {"route": "planner"}
+    assert bus.list_by_task("task-1")[0].payload == {
+        "route": "planner"
+    }
+
+
+def test_task_histories_are_isolated() -> None:
+    bus = EventBus()
+    first = make_event("task-1")
+    second = make_event("task-2")
+
+    bus.publish(first)
+    bus.publish(second)
+
+    assert bus.list_by_task("task-1") == [first]
+    assert bus.list_by_task("task-2") == [second]
+    assert bus.list_by_task("missing") == []
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    [
+        "chain_of_thought",
+        "chain-of-thought",
+        "private_reasoning",
+        "hidden_reasoning",
+        "raw_cot",
+        "reasoning_tokens",
+    ],
+)
+def test_private_reasoning_fields_are_rejected_structurally(
+    field_name: str,
+) -> None:
+    bus = EventBus()
+    event = DomainEvent(
+        event_type=EventType.AGENT_ROUTED,
+        task_id="task-1",
+        producer="test",
+        payload={"nested": [{field_name: object()}]},
+    )
+
+    with pytest.raises(ValueError, match="non-public reasoning"):
+        bus.publish(event)
+
+    assert bus.list_by_task("task-1") == []

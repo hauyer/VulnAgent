@@ -5,6 +5,7 @@ from collections import defaultdict
 from collections.abc import Callable
 
 from vulnagent.contracts import DomainEvent, EventType
+from vulnagent.core.trace_safety import ensure_public_trace_payload
 
 
 logger = logging.getLogger(__name__)
@@ -43,9 +44,13 @@ class EventBus:
     def publish(self, event: DomainEvent) -> None:
         """Publish an event and isolate subscriber failures."""
 
+        ensure_public_trace_payload(event.payload)
+
         # 先记录事件。
         # 即使某个 subscriber 出错，事件历史仍然存在。
-        self._history[event.task_id].append(event)
+        self._history[event.task_id].append(
+            event.model_copy(deep=True)
+        )
 
         callbacks = list(
             self._subscribers[event.event_type]
@@ -53,7 +58,9 @@ class EventBus:
 
         for callback in callbacks:
             try:
-                callback(event)
+                callback(
+                    event.model_copy(deep=True)
+                )
 
             except Exception:
                 # Event subscriber 属于旁路组件。
@@ -74,5 +81,6 @@ class EventBus:
         """Return an isolated copy of a task event timeline."""
 
         return list(
-            self._history.get(task_id, [])
+            event.model_copy(deep=True)
+            for event in self._history.get(task_id, [])
         )

@@ -97,6 +97,8 @@ class AgentRegistry:
         batch_keys: set[str] = set()
 
         for key, _agent in pending:
+            self._validate_agent(_agent)
+
             if key in existing_keys:
                 raise ValueError(
                     f"Agent already registered: {key}"
@@ -175,6 +177,8 @@ class AgentRegistry:
     ) -> str:
         """Resolve explicit logical key or fall back to agent.name."""
 
+        cls._validate_agent(agent)
+
         resolved_key = (
             key
             if key is not None
@@ -184,6 +188,15 @@ class AgentRegistry:
         return cls._validate_key(
             resolved_key
         )
+
+    @staticmethod
+    def _validate_agent(agent: BaseAgent) -> None:
+        """Reject registry entries outside the canonical BaseAgent boundary."""
+
+        if not isinstance(agent, BaseAgent):
+            raise TypeError(
+                "Agent registry entries must inherit BaseAgent"
+            )
 
     @staticmethod
     def _validate_key(
