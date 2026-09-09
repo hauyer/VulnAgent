@@ -53,26 +53,4 @@ async def list_task_events(task_id: str, request: Request) -> list[DomainEvent]:
 @router.get("/{task_id}/trace", response_model=list[DomainEvent])
 async def get_task_trace(task_id: str, request: Request) -> list[DomainEvent]:
     """Compatibility-friendly trace resource backed by structured events."""
-    return await list_task_events(task_id, request)
-
-def test_get_task_trace_not_found(client):
-    """测试查询不存在任务的 trace，返回 404"""
-    response = client.get("/tasks/non-existent-task-id/trace")
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Task not found"
-
-
-def test_get_task_trace_success(client):
-    """测试任务运行后能正确查询到 trace 事件列表"""
-    # 1. 创建任务
-    create_resp = client.post(
-        "/tasks",
-        json={"target_path": "tests/fixtures/sample", "target_type": "SOURCE"},
-    )
-    assert create_resp.status_code == 201
-    task_id = create_resp.json()["task_id"]
-
-    # 2. 查询 trace，确保返回 200 且数据为列表
-    trace_resp = client.get(f"/tasks/{task_id}/trace")
-    assert trace_resp.status_code == 200
-    assert isinstance(trace_resp.json(), list)
+    return await list_task_events(task_id, request)
