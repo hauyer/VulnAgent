@@ -321,6 +321,25 @@ class ControlledFuzzEngine:
         ).hexdigest()
 
         # -------------------------------------------------
+        # Runtime trace compatibility
+        # -------------------------------------------------
+        #
+        # ControlledExecutor in Step 21 will provide
+        # runtime_trace.
+        #
+        # getattr() keeps the fuzz engine compatible with
+        # an older ExecutionResult during the transition.
+        #
+
+        runtime_trace = list(
+            getattr(
+                result,
+                "runtime_trace",
+                [],
+            )
+        )
+
+        # -------------------------------------------------
         # Fuzz input evidence
         # -------------------------------------------------
 
@@ -383,6 +402,10 @@ class ControlledFuzzEngine:
                     result.signature
                 ),
                 "input_sha256": input_hash,
+
+                # Step 21:
+                # Runtime trace collected by SandboxManager.
+                "runtime_trace": runtime_trace,
             },
             reliability=0.8,
             created_by="fuzz",
@@ -427,6 +450,11 @@ class ControlledFuzzEngine:
                         errors="replace"
                     )
                 ),
+
+                # Step 21:
+                # Preserve runtime trace together
+                # with the execution output.
+                "runtime_trace": runtime_trace,
             },
             reliability=0.8,
             created_by="fuzz",

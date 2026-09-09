@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import os
-import subprocess
 import sys
-import time
 from dataclasses import dataclass
 from pathlib import Path
+
+from vulnagent.sandbox import SandboxManager, SandboxPolicy
 
 
 @dataclass
@@ -22,6 +22,7 @@ class ExecutionResult:
     stdout: bytes
     stderr: bytes
     signature: str
+    runtime_trace: list[str]
 
 
 def build_command(target: Path) -> list[str]:
@@ -46,10 +47,9 @@ def build_command(target: Path) -> list[str]:
 
 class ControlledExecutor:
     """
-    Execute an authorized local target with a timeout.
+    Controlled execution adapter used by the fuzz layer.
 
-    The execution is intentionally isolated from the fuzz
-    boundary. The fuzz layer only calls this interface.
+    The actual process execution is delegated to SandboxManager.
     """
 
     def __init__(
@@ -60,49 +60,66 @@ class ControlledExecutor:
         self.timeout_seconds = timeout_seconds
         self.max_output_bytes = max_output_bytes
 
+        self.sandbox = SandboxManager(
+            policy=SandboxPolicy(
+                timeout_ms=int(
+                    timeout_seconds * 1000
+                ),
+                collect_runtime_trace=True,
+            )
+        )
+
     def execute(
         self,
         target: Path,
         input_data: bytes,
         work_dir: Path,
     ) -> ExecutionResult:
-        """Execute target once with controlled input."""
+        """
+        Execute target once through the sandbox.
+        """
 
-        start = time.monotonic()
-
-        process = None
-
+        # 根据目标文件构造执行命令
         command = build_command(target)
 
-        try:
-            process = subprocess.Popen(
-                command,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                cwd=str(work_dir),
-                shell=False,
-            )
+        # 交给 SandboxManager 执行
+        sandbox_result = self.sandbox.execute(
+            command=command,
+            work_dir=work_dir,
+        )
 
-            stdout, stderr = process.communicate(
-                input=input_data,
-                timeout=self.timeout_seconds,
-            )
+        # SandboxResult 中的 stdout/stderr 为字符串。
+        # 转换成 bytes，保持原 Fuzz Engine 接口不变。
+        stdout = sandbox_result.stdout.encode(
+            errors="replace"
+        )
 
-            stdout = stdout[: self.max_output_bytes]
-            stderr = stderr[: self.max_output_bytes]
+        stderr = sandbox_result.stderr.encode(
+            errors="replace"
+        )
 
-            elapsed_ms = (
-                time.monotonic() - start
-            ) * 1000
+        # 限制输出大小
+        stdout = stdout[: self.max_output_bytes]
+        stderr = stderr[: self.max_output_bytes]
 
-            returncode = process.returncode
+        # 获取目标程序返回码
+        returncode = sandbox_result.return_code
 
-            crashed = (
-                returncode is not None
-                and returncode < 0
-            )
+        # 保持原来的 Fuzz Engine Crash 判断逻辑：
+        # 只有负返回码才认为是信号级 Crash。
+        crashed = (
+            returncode is not None
+            and returncode < 0
+            and not sandbox_result.timed_out
+        )
 
+        # Timeout 使用固定 signature
+        if sandbox_result.timed_out:
+            signature = "timeout"
+
+        else:
+            # 使用返回码、Crash 状态和 stderr 哈希
+            # 构造本次执行的 execution signature。
             signature_data = (
                 f"{returncode}|{crashed}|"
                 f"{hashlib.sha256(stderr[:4096]).hexdigest()}"
@@ -112,35 +129,19 @@ class ControlledExecutor:
                 signature_data
             ).hexdigest()[:16]
 
-            return ExecutionResult(
-                returncode=returncode,
-                timed_out=False,
-                crashed=crashed,
-                elapsed_ms=elapsed_ms,
-                stdout=stdout,
-                stderr=stderr,
-                signature=signature,
-            )
-
-        except subprocess.TimeoutExpired:
-            if process is not None:
-                process.kill()
-
-                stdout, stderr = process.communicate()
-            else:
-                stdout = b""
-                stderr = b""
-
-            elapsed_ms = (
-                time.monotonic() - start
-            ) * 1000
-
-            return ExecutionResult(
-                returncode=None,
-                timed_out=True,
-                crashed=False,
-                elapsed_ms=elapsed_ms,
-                stdout=stdout[: self.max_output_bytes],
-                stderr=stderr[: self.max_output_bytes],
-                signature="timeout",
-            )
+        # 将 SandboxResult 转换为 ExecutionResult。
+        #
+        # runtime_trace 从 Sandbox 层继续向上传递，
+        # 后续由 Fuzz Engine 写入 Evidence。
+        return ExecutionResult(
+            returncode=returncode,
+            timed_out=sandbox_result.timed_out,
+            crashed=crashed,
+            elapsed_ms=sandbox_result.duration_ms,
+            stdout=stdout,
+            stderr=stderr,
+            signature=signature,
+            runtime_trace=list(
+                sandbox_result.runtime_trace
+            ),
+        )

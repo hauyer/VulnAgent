@@ -16,3 +16,6 @@ artifacts/crashes/*
 !artifacts/crashes/.gitkeep
 artifacts/*.html
 
+
+# Fuzz runtime artifacts
+artifacts/fuzz/
