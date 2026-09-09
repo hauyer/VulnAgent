@@ -6,6 +6,7 @@ import ast
 import logging
 import os
 import tokenize
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -196,6 +197,53 @@ def _parse_error(file_path: str, error: Exception) -> dict[str, Any]:
     }
 
 
+@dataclass(frozen=True, slots=True)
+class PythonFileParse:
+    """Result of parsing a single Python source file.
+
+    Exactly one of ``symbols`` (with ``parsed=True``) or ``error`` is
+    populated.  The dataclass lets both ``PythonSourceParser`` (whole project)
+    and the V0.3 ``SourceProjectParser`` reuse one per-file implementation.
+    """
+
+    displayed_path: str
+    symbols: list[dict[str, Any]] = field(default_factory=list)
+    dependencies: set[str] = field(default_factory=set)
+    call_graph: dict[str, set[str]] = field(default_factory=dict)
+    error: dict[str, Any] | None = None
+    parsed: bool = False
+
+
+def parse_python_file(path: Path, displayed_path: str) -> PythonFileParse:
+    """Read and parse one Python file without executing it.
+
+    ``displayed_path`` is the project-relative path used for module naming,
+    error reporting and symbol ``file`` values.  Read/encoding/syntax errors
+    are returned as ``PythonFileParse.error`` instead of being raised, so a
+    single broken file never aborts a whole project scan.
+    """
+    try:
+        with tokenize.open(path) as source_file:
+            source = source_file.read()
+        tree = ast.parse(source, filename=displayed_path)
+    except (OSError, SyntaxError, UnicodeError) as error:
+        return PythonFileParse(
+            displayed_path=displayed_path,
+            error=_parse_error(displayed_path, error),
+        )
+
+    relative_path = Path(displayed_path)
+    visitor = _SymbolVisitor(_module_name(relative_path), displayed_path)
+    visitor.visit(tree)
+    return PythonFileParse(
+        displayed_path=displayed_path,
+        symbols=visitor.symbols,
+        dependencies=_dependencies(tree),
+        call_graph=visitor.call_graph,
+        parsed=True,
+    )
+
+
 def _merge_call_graph(
     destination: dict[str, set[str]], source: dict[str, set[str]]
 ) -> None:
@@ -236,22 +284,20 @@ class PythonSourceParser:
         displayed_files = [_display_path(path, root) for path in python_files]
 
         for path, displayed_path in zip(python_files, displayed_files):
-            try:
-                with tokenize.open(path) as source_file:
-                    source = source_file.read()
-                tree = ast.parse(source, filename=displayed_path)
-            except (OSError, SyntaxError, UnicodeError) as error:
-                LOGGER.debug("Unable to parse %s: %s", path, error)
-                parse_errors.append(_parse_error(displayed_path, error))
+            parsed_file = parse_python_file(path, displayed_path)
+            if parsed_file.error is not None:
+                LOGGER.debug(
+                    "Unable to parse %s: %s",
+                    path,
+                    parsed_file.error.get("message"),
+                )
+                parse_errors.append(parsed_file.error)
                 continue
 
             parsed_file_count += 1
-            relative_path = Path(displayed_path)
-            visitor = _SymbolVisitor(_module_name(relative_path), displayed_path)
-            visitor.visit(tree)
-            symbols.extend(visitor.symbols)
-            dependencies.update(_dependencies(tree))
-            _merge_call_graph(call_graph, visitor.call_graph)
+            symbols.extend(parsed_file.symbols)
+            dependencies.update(parsed_file.dependencies)
+            _merge_call_graph(call_graph, parsed_file.call_graph)
 
         symbols.sort(
             key=lambda symbol: (
