@@ -1,6 +1,7 @@
 """System-level task lifecycle owner for the V0.2 agent runtime."""
 
 import logging
+from typing import Any
 
 from vulnagent.agent_runtime import AgentRoute, AgentRuntime
 from vulnagent.contracts import (
@@ -120,6 +121,13 @@ class Orchestrator:
                 ),
             )
 
+            # 有界运行时通过结构化标志报告终止原因（execution_failed /
+            # step_limit_reached / fallback_used）。必须在任何终态转移前
+            # 把该快照固化到 context.metadata，并随最终状态一并持久化，
+            # 否则截断运行会在重启后被误认为一次完整成功。
+            termination = self._termination_snapshot(outcome)
+            context.metadata["termination"] = termination
+
             # Runtime 正常返回，
             # 但没有报告，仍然属于失败。
             if not context.reports:
@@ -152,6 +160,7 @@ class Orchestrator:
                 self._mark_failed(
                     context,
                     failure,
+                    metadata={"termination": termination},
                 )
                 self._publish_task_failed(
                     context,
@@ -166,6 +175,7 @@ class Orchestrator:
             self._advance(
                 context,
                 TaskStatus.COMPLETED,
+                metadata={"termination": termination},
             )
 
             return context
@@ -180,6 +190,7 @@ class Orchestrator:
             self._mark_failed(
                 context,
                 exc,
+                metadata=self._termination_metadata(context),
             )
 
             self._publish_task_failed(
@@ -240,6 +251,7 @@ class Orchestrator:
         status: TaskStatus,
         *,
         error: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         """Validate and persist one lifecycle transition."""
 
@@ -252,12 +264,15 @@ class Orchestrator:
             context.task.task_id,
             status=status,
             error=error,
+            metadata=metadata,
         )
 
     def _mark_failed(
         self,
         context: AnalysisContext,
         exc: Exception,
+        *,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         """Best-effort transition of an active task to FAILED."""
 
@@ -289,6 +304,7 @@ class Orchestrator:
                 context,
                 TaskStatus.FAILED,
                 error=str(exc),
+                metadata=metadata,
             )
 
         except Exception:
@@ -297,6 +313,64 @@ class Orchestrator:
                 "Unable to persist FAILED state for task %s",
                 context.task.task_id,
             )
+
+    @staticmethod
+    def _termination_snapshot(outcome: Any) -> dict[str, Any]:
+        """Collapse runtime termination flags into one durable, JSON-safe record.
+
+        The runtime reports termination through structured flags (see
+        ``agent_runtime/runtime.py``) rather than free-text reasons; persist
+        those flags so a bounded/truncated run stays distinguishable from a
+        full execution after a restart.
+        """
+        runtime_metadata = dict(
+            outcome.state.get("runtime_metadata") or {}
+        )
+        return {
+            "termination_reason": str(
+                outcome.termination_reason
+            ),
+            "step_limit_reached": bool(
+                outcome.step_limit_reached
+            ),
+            "execution_failed": bool(
+                outcome.execution_failed
+            ),
+            "fallback_used": bool(
+                runtime_metadata.get(
+                    "fallback_used",
+                    False,
+                )
+            ),
+            "analysis_retries": int(
+                runtime_metadata.get(
+                    "analysis_retries",
+                    0,
+                )
+            ),
+            "analysis_retry_exhausted": bool(
+                runtime_metadata.get(
+                    "analysis_retry_exhausted",
+                    False,
+                )
+            ),
+            "agent_steps_executed": int(
+                outcome.state.get("step_count", 0)
+            ),
+            "route_history": list(
+                outcome.state.get("route_history", [])
+            ),
+        }
+
+    @staticmethod
+    def _termination_metadata(
+        context: AnalysisContext,
+    ) -> dict[str, Any] | None:
+        """Return the persisted metadata keyed on any termination snapshot."""
+        termination = context.metadata.get("termination")
+        if termination is None:
+            return None
+        return {"termination": termination}
 
     def _on_route(
         self,
