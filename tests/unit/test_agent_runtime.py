@@ -1006,6 +1006,8 @@ async def test_agent_step_limit_is_hard_bound_and_forces_safe_report() -> None:
         is True
     )
 
+    assert result.execution_failed is False
+
     assert (
         result.state[
             "route_history"
@@ -1089,6 +1091,8 @@ async def test_route_repeat_limit_falls_back_after_exact_bound() -> None:
         in result.termination_reason
     )
 
+    assert result.execution_failed is False
+
 
 # ============================================================
 # Invalid route tests
@@ -1134,6 +1138,8 @@ async def test_invalid_supervisor_route_does_not_crash() -> None:
         in result.termination_reason
     )
 
+    assert result.execution_failed is True
+
 
 # ============================================================
 # Supervisor exception fallback tests
@@ -1178,6 +1184,8 @@ async def test_supervisor_exception_falls_back_to_report() -> None:
         "supervisor execution failed"
         in result.termination_reason
     )
+
+    assert result.execution_failed is True
 
 
 # ============================================================
@@ -1291,6 +1299,8 @@ async def test_agent_exception_falls_back_to_report_with_trace() -> None:
         "agent execution failed"
         in result.termination_reason
     )
+
+    assert result.execution_failed is True
 
 
 # ============================================================

@@ -280,3 +280,37 @@ async def test_agent_failure_without_report_closes_task_as_failed() -> None:
         AgentRoute.SOURCE_ANALYSIS.value,
         AgentRoute.REPORT.value,
     ]
+
+
+async def test_agent_failure_with_successful_report_still_marks_task_failed() -> None:
+    capabilities = build_mock_capabilities()
+    default_agents = build_agent_registry(capabilities).as_mapping()
+    default_agents[AgentRoute.SOURCE_ANALYSIS.value] = FailingSourceAgent()
+    registry = AgentRegistry()
+    registry.register_many(default_agents)
+    services = build_application(capabilities, agent_registry=registry)
+    task = services.task_manager.create_task(
+        Target(
+            target_id="reported-failure-target",
+            path="safe-mock-fixture",
+            target_type=TargetType.SOURCE,
+        )
+    )
+
+    context = await services.orchestrator.run(task.task_id)
+
+    stored = services.task_manager.get_task(task.task_id)
+    events = services.event_bus.list_by_task(task.task_id)
+    assert stored is not None
+    assert stored.status is TaskStatus.FAILED
+    assert context.task.status is TaskStatus.FAILED
+    assert context.reports
+    assert not services.orchestrator.is_running(task.task_id)
+    event_types = {event.event_type for event in events}
+    assert EventType.REPORT_GENERATED in event_types
+    assert EventType.TASK_FAILED in event_types
+    assert any(
+        event.event_type is EventType.AGENT_FINISHED
+        and event.payload.get("success") is False
+        for event in events
+    )

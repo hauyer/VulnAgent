@@ -144,6 +144,21 @@ class Orchestrator:
                     },
                 )
 
+            if outcome.execution_failed:
+                failure = ModuleExecutionError(
+                    "Agent runtime execution failed: "
+                    f"{outcome.termination_reason}"
+                )
+                self._mark_failed(
+                    context,
+                    failure,
+                )
+                self._publish_task_failed(
+                    context,
+                    failure,
+                )
+                return context
+
             # ----------------------------------
             # 6. REPORTING -> COMPLETED
             # ----------------------------------
@@ -167,15 +182,9 @@ class Orchestrator:
                 exc,
             )
 
-            self._publish(
-                EventType.TASK_FAILED,
-                task_id,
-                "orchestrator",
-                {
-                    "error": "task execution failed",
-                    "error_type": type(exc).__name__,
-                    "status": context.task.status.value,
-                },
+            self._publish_task_failed(
+                context,
+                exc,
             )
 
             raise
@@ -352,4 +361,22 @@ class Orchestrator:
                 producer=producer,
                 payload=payload or {},
             )
+        )
+
+    def _publish_task_failed(
+        self,
+        context: AnalysisContext,
+        exc: Exception,
+    ) -> None:
+        """Publish a sanitized terminal failure event."""
+
+        self._publish(
+            EventType.TASK_FAILED,
+            context.task.task_id,
+            "orchestrator",
+            {
+                "error": "task execution failed",
+                "error_type": type(exc).__name__,
+                "status": context.task.status.value,
+            },
         )

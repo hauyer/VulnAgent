@@ -25,6 +25,15 @@ P2-P7/P9 的真实能力只需实现 `vulnagent.contracts` 中既有 Protocol，
 
 P8 可读取 Task、最终 `AnalysisContext`、按 task 查询的 EventBus 时间线、AgentMessage、Evidence 和 Report。P9 可消费 Route、Agent 成败、retry/fallback/termination 摘要、Evidence ID 与结构化事件。API 展示、证据图、报告排版、Benchmark 和 Experiment 指标仍由对应 Owner 实现。
 
+## Final Integration Fix
+
+- Early fallback 生命周期已兼容：仅新增 `PROFILING -> REPORTING`，支持 Supervisor 在 Planner 前失败时执行诊断 Report。
+- Runtime 使用结构化 `execution_failed` 与 `step_limit_reached` 标志区分执行故障和有界安全截断，不依赖终止原因字符串。
+- Agent 或 Supervisor 执行故障即使成功生成诊断 Report，Task 最终仍进入 `FAILED`；Report 与 AnalysisContext 保持可查询。
+- ToolSpec 在注册期验证异步 adapter，同步函数会立即触发 `ToolRegistrationError`，同时兼容异步 bound method 与异步 callable object。
+- 已补充真实 Orchestrator × AgentRuntime 的 Supervisor 异常、非法初始路由和 Agent 失败后成功报告路径测试。
+- Contracts、Architecture、分层 Unit / Integration / System 与完整 pytest 均作为最终收口门禁执行。
+
 ## Cross-owner Scope
 
 本次收口未实现真实 Parser、Source Audit、Binary Analysis、Fuzz、Verification 算法、API/Frontend、Evidence Graph、Report UI 或 Experiment 能力；这些模块继续通过现有 Protocol 接入。
