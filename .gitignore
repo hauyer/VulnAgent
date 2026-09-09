@@ -12,3 +12,6 @@ artifacts/logs/*
 artifacts/crashes/*
 !artifacts/crashes/.gitkeep
 
+
+# Fuzz runtime artifacts
+artifacts/fuzz/
