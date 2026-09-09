@@ -331,13 +331,6 @@ def build_application(
             capabilities
         )
     )
-    resolved_agent_registry = (
-        agent_registry
-        if agent_registry is not None
-        else build_agent_registry(
-            capabilities
-        )
-    )
 
     resolved_runtime_policy = (
         runtime_policy

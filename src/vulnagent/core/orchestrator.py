@@ -172,7 +172,8 @@ class Orchestrator:
                 task_id,
                 "orchestrator",
                 {
-                    "error": str(exc),
+                    "error": "task execution failed",
+                    "error_type": type(exc).__name__,
                     "status": context.task.status.value,
                 },
             )
