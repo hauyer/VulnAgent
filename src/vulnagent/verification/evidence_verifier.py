@@ -4,16 +4,20 @@ This is the real (non-Mock) replacement for ``MockVerifier``: it decides a
 ``VulnerabilityCandidate`` only from the ``Evidence`` supplied in the
 ``VerificationContext`` and never mutates the candidate.
 
-Rules are intentionally deterministic and explainable so a course audience can
-follow exactly why a candidate was confirmed, rejected, or left uncertain:
+Rules are deterministic and explainable so a course audience can follow exactly
+why a candidate was confirmed, rejected, or left uncertain:
 
-* ``CRASH_LOG`` / ``STACK_TRACE`` / ``SANITIZER_OUTPUT`` evidence proves a
-  reachable runtime fault on its own (``CONFIRMED``).
-* Static corroboration needs at least two independent evidence kinds
-  (e.g. ``SOURCE_LOCATION`` + ``CODE_SNIPPET`` or ``CALL_PATH``/``TAINT_PATH``)
-  **and** a usable location before the candidate may be ``CONFIRMED``.
-* A single static signal is plausible but under-proven -> ``UNCERTAIN``.
-* ``MODEL_REASONING_SUMMARY`` is only ever auxiliary; it can never confirm.
+* ``CRASH_LOG`` / ``STACK_TRACE`` / ``SANITIZER_OUTPUT`` at/above the runtime
+  reliability threshold prove a reachable runtime fault (``CONFIRMED``).
+* ``CONFIRMED`` from static signals requires **at least two distinct probative
+  evidence kinds** (each at/above the probative reliability threshold) **and** a
+  usable location.  Auxiliary signals (fuzz input, coverage, tool result,
+  runtime trace) never count toward confirmation on their own.
+* A single probative signal is plausible but under-proven -> ``UNCERTAIN``.
+* ``MODEL_REASONING_SUMMARY`` is only ever auxiliary; it can never confirm and
+  never raises confidence.
+* Confidence is computed only from the evidence that actually drives the verdict
+  (never model reasoning, never low-reliability or auxiliary-only signals).
 * Candidates without evidence or with broken required fields are ``REJECTED``
   with the reason preserved (never silently dropped).
 
@@ -31,7 +35,7 @@ from vulnagent.contracts import (
     VulnerabilityStatus,
 )
 
-# Kinds that alone prove a reachable runtime fault.
+# Evidence kinds that alone prove a reachable runtime fault.
 _STRONG_RUNTIME = frozenset(
     {
         EvidenceType.CRASH_LOG,
@@ -40,8 +44,8 @@ _STRONG_RUNTIME = frozenset(
     }
 )
 
-# Static source signals that corroborate a candidate.
-_STATIC_SOURCE = frozenset(
+# Probative static signals.  Only these (at/above threshold) may confirm.
+_PROBATIVE_SOURCE = frozenset(
     {
         EvidenceType.SOURCE_LOCATION,
         EvidenceType.CODE_SNIPPET,
@@ -50,17 +54,16 @@ _STATIC_SOURCE = frozenset(
         EvidenceType.TAINT_PATH,
     }
 )
-
-# Static binary signals that corroborate a candidate.
-_STATIC_BINARY = frozenset(
+_PROBATIVE_BINARY = frozenset(
     {
         EvidenceType.BINARY_ADDRESS,
         EvidenceType.DISASSEMBLY,
         EvidenceType.CFG_PATH,
     }
 )
+_PROBATIVE = _PROBATIVE_SOURCE | _PROBATIVE_BINARY
 
-# Contextual, but not on their own probative, signals.
+# Contextual signals: they may accompany a verdict but never confirm on their own.
 _AUXILIARY = frozenset(
     {
         EvidenceType.FUZZ_INPUT,
@@ -70,15 +73,16 @@ _AUXILIARY = frozenset(
     }
 )
 
-# Model reasoning is never proof by itself.
+# Model reasoning is never proof by itself and never raises confidence.
 _MODEL_ONLY = frozenset({EvidenceType.MODEL_REASONING_SUMMARY})
 
-# Everything that can positively corroborate a candidate.
-_CORROBORATING = _STATIC_SOURCE | _STATIC_BINARY | _AUXILIARY | _STRONG_RUNTIME
+# Reliability thresholds for probative / runtime evidence.
+MIN_PROBATIVE_RELIABILITY = 0.5
+MIN_RUNTIME_RELIABILITY = 0.5
 
 _REQUIRED_CANDIDATE_FIELDS = ("title", "description", "source_agent")
 
-_RULE_VERSION = "0.3.0"
+_RULE_VERSION = "0.3.1"
 
 
 def _location_supported(candidate: VulnerabilityCandidate) -> bool:
@@ -111,10 +115,6 @@ def _referenced_evidence(
     return resolved, unresolved
 
 
-def _max_reliability(items: list[Evidence]) -> float:
-    return max((item.reliability for item in items), default=0.0)
-
-
 class EvidenceVerifier:
     """Evidence-driven verifier implementing the ``VulnerabilityVerifier`` port."""
 
@@ -124,7 +124,6 @@ class EvidenceVerifier:
         context: VerificationContext,
     ) -> VerificationResult:
         evidence_ids: list[str] = []
-        counts: Counter[str] = Counter()
         resolved, unresolved = _referenced_evidence(candidate, context)
 
         # 1. Completeness: a malformed candidate cannot be judged.
@@ -143,7 +142,7 @@ class EvidenceVerifier:
                     f"required field(s) {', '.join(missing_fields)}."
                 ),
                 evidence_ids=[],
-                counts=counts,
+                counts=Counter(),
                 unresolved=unresolved,
                 extra={"stage": "completeness"},
             )
@@ -155,101 +154,135 @@ class EvidenceVerifier:
                 confidence=0.1,
                 rationale=(
                     "No verifiable evidence was attached to this candidate; "
-                    "it cannot be independently confirmed or reproduced."
+                    "it cannot be independently confirmed."
                 ),
                 evidence_ids=[],
-                counts=counts,
+                counts=Counter(),
                 unresolved=unresolved,
                 extra={"stage": "evidence_missing"},
             )
 
         counts = Counter(item.evidence_type.value for item in resolved)
-        for item in resolved:
-            evidence_ids.append(item.evidence_id)
+        evidence_ids = [item.evidence_id for item in resolved]
 
-        runtime_kinds = {
-            item.evidence_type for item in resolved if item.evidence_type in _STRONG_RUNTIME
-        }
-        if runtime_kinds:
+        # 2. Runtime proof (only evidence at/above the runtime threshold counts).
+        runtime_proof = [
+            item
+            for item in resolved
+            if item.evidence_type in _STRONG_RUNTIME
+            and item.reliability >= MIN_RUNTIME_RELIABILITY
+        ]
+        if runtime_proof:
             return self._result(
                 candidate,
                 status=VulnerabilityStatus.CONFIRMED,
-                confidence=round(min(0.95, 0.5 + _max_reliability(resolved) * 0.5), 3),
+                confidence=round(
+                    min(0.95, 0.5 + _max_reliability(runtime_proof) * 0.5),
+                    3,
+                ),
                 rationale=(
-                    "Runtime proof present: reachable crash/stack/sanitizer "
-                    "evidence was independently reproduced and confirms the "
-                    f"candidate ({', '.join(sorted(k.value for k in runtime_kinds))})."
+                    "Runtime proof evidence "
+                    f"({', '.join(sorted(_unique_types(runtime_proof)))}) supplied "
+                    "for the candidate demonstrates a reachable fault; the verdict "
+                    "is grounded in that runtime artifact."
                 ),
                 evidence_ids=evidence_ids,
                 counts=counts,
                 unresolved=unresolved,
-                extra={"stage": "runtime_proof"},
+                extra={"stage": "runtime_proof", "participating_types": _unique_types(runtime_proof)},
             )
 
-        # Corroborating static/contextual evidence (model reasoning excluded).
-        corroborating = {
-            item.evidence_type
+        # 3. Probative static signals (each must clear the probative threshold).
+        probative = [
+            item
             for item in resolved
-            if item.evidence_type in _CORROBORATING
-        }
-        kind_count = len(corroborating)
+            if item.evidence_type in _PROBATIVE
+            and item.reliability >= MIN_PROBATIVE_RELIABILITY
+        ]
+        probative_kinds = _unique_types(probative)
         location_ok = _location_supported(candidate)
 
-        if kind_count >= 2 and location_ok:
+        if len(probative_kinds) >= 2 and location_ok:
             return self._result(
                 candidate,
                 status=VulnerabilityStatus.CONFIRMED,
-                confidence=round(min(0.9, 0.5 + _max_reliability(resolved) * 0.4), 3),
+                confidence=round(
+                    min(0.9, 0.5 + _max_reliability(probative) * 0.4),
+                    3,
+                ),
                 rationale=(
-                    "Independent static corroboration: multiple evidence kinds "
-                    f"({', '.join(sorted(k.value for k in corroborating))}) agree "
-                    "on a usable candidate location."
+                    "Independent static corroboration: multiple probative evidence "
+                    f"kinds ({', '.join(sorted(probative_kinds))}) at/above the "
+                    "reliability threshold agree on a usable candidate location."
                 ),
                 evidence_ids=evidence_ids,
                 counts=counts,
                 unresolved=unresolved,
-                extra={"stage": "static_corroboration"},
+                extra={
+                    "stage": "static_corroboration",
+                    "participating_types": probative_kinds,
+                },
             )
 
-        if kind_count >= 1:
+        if len(probative_kinds) >= 1:
             reason = (
-                "Single evidence kind present "
-                f"({', '.join(sorted(k.value for k in corroborating))}); "
-                "candidate is plausible but under-proven without a second "
-                "independent signal or runtime reproduction."
+                "Single probative evidence kind "
+                f"({', '.join(sorted(probative_kinds))}); candidate is plausible "
+                "but under-proven without a second independent signal or runtime "
+                "reproduction."
             )
             if not location_ok:
                 reason += " The candidate also lacks a usable location."
             return self._result(
                 candidate,
                 status=VulnerabilityStatus.UNCERTAIN,
-                confidence=round(min(0.6, 0.3 + _max_reliability(resolved) * 0.5), 3),
+                confidence=round(
+                    min(0.6, 0.3 + _max_reliability(probative) * 0.5),
+                    3,
+                ),
                 rationale=reason,
                 evidence_ids=evidence_ids,
                 counts=counts,
                 unresolved=unresolved,
-                extra={"stage": "under_proven"},
+                extra={
+                    "stage": "under_proven",
+                    "participating_types": probative_kinds,
+                },
             )
 
-        model_only = {
-            item.evidence_type
-            for item in resolved
-            if item.evidence_type in _MODEL_ONLY
-        }
-        if model_only:
+        # 4. No qualifying probative evidence.
+        if any(item.evidence_type in _MODEL_ONLY for item in resolved):
             return self._result(
                 candidate,
                 status=VulnerabilityStatus.UNCERTAIN,
                 confidence=0.2,
                 rationale=(
                     "Only model reasoning summary was supplied; model prose "
-                    "cannot independently prove a vulnerability. Awaiting code "
-                    "or runtime corroboration."
+                    "cannot independently prove a vulnerability and does not "
+                    "raise confidence. Awaiting code or runtime corroboration."
                 ),
                 evidence_ids=evidence_ids,
                 counts=counts,
                 unresolved=unresolved,
-                extra={"stage": "model_only"},
+                extra={"stage": "model_only", "participating_types": []},
+            )
+
+        auxiliary_present = any(item.evidence_type in _AUXILIARY for item in resolved)
+        if auxiliary_present:
+            return self._result(
+                candidate,
+                status=VulnerabilityStatus.UNCERTAIN,
+                confidence=0.2,
+                rationale=(
+                    "Only auxiliary/contextual signals were supplied (fuzz input, "
+                    "coverage, runtime trace or tool result). Auxiliary signals do "
+                    "not confirm a vulnerability without qualifying probative or "
+                    "runtime evidence."
+                ),
+                evidence_ids=evidence_ids,
+                counts=counts,
+                unresolved=unresolved,
+                extra={"stage": "auxiliary_only", "participating_types": []},
             )
 
         return self._result(
@@ -257,13 +290,14 @@ class EvidenceVerifier:
             status=VulnerabilityStatus.UNCERTAIN,
             confidence=0.2,
             rationale=(
-                "No probative evidence kind was found among the attached "
-                "evidence; verdict left uncertain for human review."
+                "No probative evidence at/above the reliability threshold was "
+                "found among the attached evidence; verdict left uncertain for "
+                "human review."
             ),
             evidence_ids=evidence_ids,
             counts=counts,
             unresolved=unresolved,
-            extra={"stage": "no_probative_evidence"},
+            extra={"stage": "no_qualifying_evidence", "participating_types": []},
         )
 
     @staticmethod
@@ -296,6 +330,14 @@ class EvidenceVerifier:
             evidence_ids=evidence_ids,
             metadata=metadata,
         )
+
+
+def _unique_types(items: list[Evidence]) -> list[str]:
+    return sorted({item.evidence_type.value for item in items})
+
+
+def _max_reliability(items: list[Evidence]) -> float:
+    return max((item.reliability for item in items), default=0.0)
 
 
 def _confidence_band(confidence: float) -> str:

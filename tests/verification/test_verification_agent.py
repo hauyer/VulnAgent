@@ -20,6 +20,7 @@ def make_candidate(
     vulnerability_id: str,
     *,
     location: VulnerabilityLocation | None = None,
+    evidence_ids: list[str] | None = None,
 ) -> VulnerabilityCandidate:
     return VulnerabilityCandidate(
         vulnerability_id=vulnerability_id,
@@ -33,6 +34,19 @@ def make_candidate(
         source_type="source",
         confidence=0.6,
         severity="HIGH",
+        evidence_ids=evidence_ids or [],
+    )
+
+
+def make_evidence(evidence_id: str) -> Evidence:
+    return Evidence(
+        evidence_id=evidence_id,
+        task_id="task-1",
+        evidence_type=EvidenceType.SOURCE_LOCATION,
+        source="source_audit",
+        description="discovery evidence",
+        reliability=0.6,
+        created_by="source_audit",
     )
 
 
@@ -61,21 +75,26 @@ class RecordingVerifier:
         )
 
 
-async def test_verification_agent_deduplicates_before_verifying() -> None:
+async def test_verification_agent_canonicalizes_duplicates_before_verifying() -> None:
     task = make_task()
-    v1 = make_candidate("v1")
-    v2 = make_candidate("v2")  # duplicate of v1 (same target/type/location)
-    v3 = make_candidate("v3", location=VulnerabilityLocation(file_path="b.c", function_name="send", line_start=9, line_end=12))
+    evidence = [make_evidence("e1"), make_evidence("e2")]
+    v1 = make_candidate("v1", evidence_ids=["e1"])
+    v2 = make_candidate("v2", evidence_ids=["e2"])  # duplicate of v1 (same target/type/location)
+    v3 = make_candidate("v3", location=VulnerabilityLocation(file_path="b.c", function_name="send", line_start=9, line_end=12), evidence_ids=["e1"])
     verifier = RecordingVerifier()
     agent = VerificationAgent(verifier)
-    result = await agent.run(task, AnalysisContext(task=task, findings=[v1, v2, v3]))
+    result = await agent.run(task, AnalysisContext(task=task, findings=[v1, v2, v3], evidence=evidence))
 
-    # The duplicate must not be independently verified or re-emitted.
+    # The merged duplicate is not independently verified; evidence is fused onto the
+    # canonical candidate and the merged id stays traceable.
     assert verifier.called_ids == ["v1", "v3"]
     assert [item.vulnerability_id for item in result.findings] == ["v1", "v3"]
     assert [item.vulnerability_id for item in result.verifications] == ["v1", "v3"]
-    message = result.messages[0]
-    assert message.payload.get("deduplicated") == 1
+
+    canonical = next(item for item in result.findings if item.vulnerability_id == "v1")
+    assert {"e1", "e2"}.issubset(canonical.evidence_ids)  # evidence fused
+    assert canonical.metadata["duplicate_ids"] == ["v2"]  # traceable
+    assert result.messages[0].payload.get("merged") == 1
 
 
 async def test_verification_agent_applies_only_final_status() -> None:

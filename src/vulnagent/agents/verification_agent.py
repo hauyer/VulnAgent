@@ -1,30 +1,72 @@
-"""Independent mock verification agent."""
+"""Independent verification agent (P7).
+
+Single-source canonicalization: duplicate candidates are merged into a canonical
+candidate with fused evidence and traceable ``metadata["duplicate_ids"]``, never
+silently deleted.  Each canonical candidate is then handed to the injected
+``VulnerabilityVerifier`` for an independent verdict, and every verdict is
+recorded as its own ``VERIFICATION_RESULT`` Evidence for traceability.
+
+Note on architecture: the agent must not import the capability packages
+(architecture guard), so the canonicalization logic lives here as the single
+source of truth.
+"""
 
 from vulnagent.agents.base import BaseAgent
 from vulnagent.contracts import AgentMessage, AgentMessageType, AgentResult, AnalysisContext, Evidence, EvidenceType, Task, VerificationContext, VulnerabilityCandidate, VulnerabilityVerifier
 from vulnagent.utils.ids import new_evidence_id, new_message_id
 
 
-def _partition_duplicates(
-    findings: list[VulnerabilityCandidate],
-) -> tuple[list[VulnerabilityCandidate], list[VulnerabilityCandidate]]:
-    """Keep the first candidate for each (target, kind, location); return the rest.
+def _has_reliable_location(finding: VulnerabilityCandidate) -> bool:
+    """A location is merge-reliable only when it carries an actual locator."""
+    location = finding.location
+    return location is not None and bool(
+        location.file_path or location.binary_address or location.module_name
+    )
 
-    Agents must not import from the capability packages (architecture guard), so this
-    mirrors ``vulnagent.verification.duplicate`` semantics inline. Both files belong
-    to the same owner (P7) and must stay consistent.
+
+def canonicalize_candidates(
+    findings: list[VulnerabilityCandidate],
+) -> tuple[list[VulnerabilityCandidate], int]:
+    """Merge exact duplicates into canonical candidates.
+
+    Rules:
+      * Only candidates sharing ``(target_id, vulnerability_type)`` **and** a
+        reliable location are treated as the same finding.
+      * A candidate without a reliable location is never collapsed through a
+        bare ``None`` key -- each stays independent.
+      * The first candidate of a group stays canonical; evidence ids are fused
+        (sorted union) and merged-away ids are recorded in
+        ``metadata["duplicate_ids"]`` so nothing is silently dropped.
+
+    Returns ``(canonical_findings, merged_count)``.  Input is treated as deep
+    copies by the caller; only canonical copies are mutated for the merge.
     """
-    seen: set[tuple[str, str, str]] = set()
-    unique: list[VulnerabilityCandidate] = []
-    duplicates: list[VulnerabilityCandidate] = []
+    canonicals: dict[tuple[str, str, str], VulnerabilityCandidate] = {}
+    merged_count = 0
     for finding in findings:
-        key = (finding.target_id, finding.vulnerability_type, str(finding.location))
-        if key in seen:
-            duplicates.append(finding)
+        if _has_reliable_location(finding):
+            key = (finding.target_id, finding.vulnerability_type, str(finding.location))
         else:
-            seen.add(key)
-            unique.append(finding)
-    return unique, duplicates
+            # No reliable location -> never merge with others.
+            key = (finding.target_id, finding.vulnerability_type, finding.vulnerability_id)
+
+        existing = canonicals.get(key)
+        if existing is None:
+            canonicals[key] = finding
+            continue
+        if finding.vulnerability_id == existing.vulnerability_id:
+            # The exact same candidate reported twice; count it but keep one copy.
+            merged_count += 1
+            continue
+
+        # Duplicate with a distinct id: fuse its evidence into the canonical.
+        existing.evidence_ids = sorted(set(existing.evidence_ids) | set(finding.evidence_ids))
+        duplicate_ids = set(existing.metadata.get("duplicate_ids", []))
+        duplicate_ids.add(finding.vulnerability_id)
+        existing.metadata["duplicate_ids"] = sorted(duplicate_ids)
+        merged_count += 1
+
+    return list(canonicals.values()), merged_count
 
 
 class VerificationAgent(BaseAgent):
@@ -36,9 +78,10 @@ class VerificationAgent(BaseAgent):
     async def run(self, task: Task, context: AnalysisContext) -> AgentResult:
         # Work on deep copies so the original discovery candidates are never mutated.
         findings = [item.model_copy(deep=True) for item in context.findings]
-        # Deduplication belongs to the verification boundary: a later duplicate must
-        # not receive a second, independent verdict for the same reported location.
-        findings, duplicates = _partition_duplicates(findings)
+        # Canonicalization is part of the verification boundary: exact duplicates
+        # are merged (evidence fused, ids traced) before an independent verdict.
+        findings, merged_count = canonicalize_candidates(findings)
+
         verification_context = VerificationContext(task_id=task.task_id, evidence=context.evidence)
         verifications = [await self.verifier.verify(finding, verification_context) for finding in findings]
         statuses = {item.vulnerability_id: item.status for item in verifications}
@@ -59,7 +102,7 @@ class VerificationAgent(BaseAgent):
                     "confidence": verdict.confidence,
                     "rationale": verdict.rationale,
                     "referenced_evidence_ids": verdict.evidence_ids,
-                    "duplicate_count": len(duplicates),
+                    "duplicate_ids": finding.metadata.get("duplicate_ids", []),
                 },
                 reliability=0.5,
                 created_by=self.name,
@@ -76,8 +119,9 @@ class VerificationAgent(BaseAgent):
             payload={
                 "statuses": {item.vulnerability_id: item.status.value for item in findings},
                 "request_additional_analysis": request_additional,
-                "deduplicated": len(duplicates),
+                "merged": merged_count,
             },
             evidence_ids=[item.evidence_id for item in evidence],
         )
         return AgentResult(agent_name=self.name, messages=[message], findings=findings, evidence=evidence, verifications=verifications)
+

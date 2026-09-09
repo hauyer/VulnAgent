@@ -36,7 +36,11 @@ class ReviewerAgent(BaseAgent):
             sender=self.name,
             receiver="report",
             message_type=AgentMessageType.REVIEW_RESULT,
-            payload={"reviewed": len(context.findings), "review_passed": not notes, "review_notes": notes, "mock": True},
+            payload={
+                "reviewed": len(context.findings),
+                "review_passed": not notes,
+                "review_notes": notes,
+            },
             evidence_ids=sorted(evidence_ids),
         )
         return AgentResult(agent_name=self.name, messages=[message])
