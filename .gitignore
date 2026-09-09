@@ -19,3 +19,7 @@ artifacts/*.html
 
 # Fuzz runtime artifacts
 artifacts/fuzz/
+
+
+# scratch comparison copy
+_cmp/
