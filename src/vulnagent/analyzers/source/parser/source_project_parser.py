@@ -36,6 +36,7 @@ from .languages import (
     recognized_languages,
 )
 from .python_parser import parse_python_file
+from .python_resolver import resolve_call_graph_for_files
 
 LOGGER = logging.getLogger(__name__)
 
@@ -177,6 +178,7 @@ class SourceProjectParser:
         dependencies: set[str] = set()
         call_graph: dict[str, set[str]] = {}
         parsed_file_count = 0
+        parsed_files: list[Any] = []
 
         counts: dict[str, int] = {}
         for source_file in files:
@@ -200,6 +202,7 @@ class SourceProjectParser:
                 continue
 
             parsed_file_count += 1
+            parsed_files.append(parsed)
             symbols.extend(parsed.symbols)
             dependencies.update(parsed.dependencies)
             for caller, callees in parsed.call_graph.items():
@@ -212,10 +215,17 @@ class SourceProjectParser:
                 str(symbol["qualified_name"]),
             )
         )
-        serialized_call_graph = {
-            caller: sorted(callees)
-            for caller, callees in sorted(call_graph.items())
-        }
+        resolved_call_graph = resolve_call_graph_for_files(
+            call_graph, symbols, parsed_files
+        )
+        entry_points = sorted(
+            (
+                {"file": file.displayed_path, "line": file.entry_point}
+                for file in parsed_files
+                if file.entry_point is not None
+            ),
+            key=lambda point: (str(point["file"]), int(point["line"])),
+        )
 
         languages = sorted(counts) if counts else []
         unsupported = sorted(
@@ -237,7 +247,7 @@ class SourceProjectParser:
             files=[source_file.displayed_path for source_file in files],
             symbols=symbols,
             dependencies=sorted(dependencies),
-            call_graph=serialized_call_graph,
+            call_graph=resolved_call_graph,
             metadata={
                 "parser": "source_project",
                 "scanned": True,
@@ -252,6 +262,11 @@ class SourceProjectParser:
                 "other_file_count": other_file_count,
                 "skipped_oversized_files": skipped_oversized,
                 "max_file_bytes": max_file_bytes,
+                "imports": {
+                    parsed_file.displayed_path: parsed_file.imports
+                    for parsed_file in parsed_files
+                },
+                "entry_points": entry_points,
                 "error_count": len(parse_errors),
                 "parse_errors": parse_errors,
                 "ignored_directories": sorted(IGNORED_DIRECTORY_NAMES),
@@ -285,6 +300,8 @@ class SourceProjectParser:
                 "other_file_count": 0,
                 "skipped_oversized_files": 0,
                 "max_file_bytes": 0,
+                "imports": {},
+                "entry_points": [],
                 "error_count": 1,
                 "parse_errors": [error],
                 "ignored_directories": sorted(IGNORED_DIRECTORY_NAMES),
