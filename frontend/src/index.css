@@ -1,0 +1,85 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    /* 浅蓝色主题 (Light Blue / Clean Cyan-Blue Theme) */
+    --background: 210 45% 98%;           /* 柔和冰蓝色底色 #f4f8fc */
+    --foreground: 218 35% 15%;           /* 深蓝灰文字 #1a2332，绝不使用刺眼的纯黑色 */
+    --card: 0 0% 100%;                   /* 纯白卡片 #ffffff */
+    --card-foreground: 218 35% 15%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 218 35% 15%;
+    --primary: 213 94% 48%;              /* 活力科技蓝 #0e70e6 */
+    --primary-foreground: 210 40% 98%;   /* 纯白 */
+    --secondary: 212 45% 94%;            /* 浅蓝灰底色 #e4eefa */
+    --secondary-foreground: 215 45% 20%; /* 深海军蓝文字 #1c304e */
+    --muted: 212 40% 92%;                /* 静音淡蓝 #dae7f5 */
+    --muted-foreground: 215 22% 44%;     /* 次级灰蓝说明文字 #566c86 */
+    --accent: 212 75% 92%;               /* 浅天蓝悬浮高光 #d3e7fd */
+    --accent-foreground: 215 55% 18%;    /* 悬浮文字颜色 */
+    --border: 213 32% 87%;               /* 浅冰蓝精细边框 #cbdcf0 */
+    --input: 213 32% 87%;
+    --ring: 213 94% 48%;                 /* 聚焦蓝色光晕 */
+    --radius: 0.5rem;
+
+    /* Status tokens */
+    --status-confirmed: 0 72% 51%;
+    --status-rejected: 215 20% 55%;
+    --status-uncertain: 38 92% 50%;
+    --status-candidate: 213 85% 56%;
+    --status-running: 201 94% 44%;
+    --status-completed: 145 60% 40%;
+    --status-failed: 0 72% 51%;
+  }
+
+  /* 即使在 dark 模式下，也使用深海藏青蓝 (Deep Oceanic Navy)，绝非纯黑 */
+  .dark {
+    --background: 220 38% 10%;          /* 深海军蓝 #0f1724 */
+    --foreground: 210 40% 98%;          /* 冰白 */
+    --card: 220 36% 14%;                /* 沉静蓝灰卡片 #162032 */
+    --card-foreground: 210 40% 98%;
+    --popover: 220 36% 14%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 212 95% 62%;             /* 高亮天蓝 */
+    --primary-foreground: 222 47% 11%;
+    --secondary: 220 30% 19%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 220 30% 19%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 220 35% 22%;
+    --accent-foreground: 210 40% 98%;
+    --border: 220 28% 22%;              /* 藏青蓝边框 */
+    --input: 220 28% 22%;
+    --ring: 212 95% 62%;
+  }
+
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: "Inter", system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection {
+    background-color: hsl(var(--ring) / 0.18);
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: hsl(var(--background));
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground));
+  }
+}
