@@ -61,7 +61,7 @@ from vulnagent.fuzz.mock import MockFuzzEngine
 from vulnagent.llm.base import BaseLLM
 from vulnagent.llm.router import LLMRouter
 from vulnagent.report.generator import (
-    MockReportGenerator,
+    StructuredReportGenerator,
 )
 from vulnagent.settings import (
     Settings,
@@ -107,7 +107,7 @@ def build_mock_capabilities() -> CapabilityBundle:
         binary_analyzer=MockBinaryReverseAnalyzer(),
         fuzz_engine=MockFuzzEngine(),
         verifier=MockVerifier(),
-        report_generator=MockReportGenerator(),
+        report_generator=StructuredReportGenerator(),
     )
 
 

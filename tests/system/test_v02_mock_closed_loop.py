@@ -5,7 +5,7 @@ from typing import get_type_hints
 
 import pytest
 
-from vulnagent.agent_runtime import AgentRoute, RuntimeState
+from vulnagent.agent_runtime import AgentRoute, RuntimePolicy, RuntimeState
 from vulnagent.agents.base import BaseAgent
 from vulnagent.agents.registry import AgentRegistry
 from vulnagent.bootstrap import (
@@ -214,6 +214,59 @@ async def test_unauthorized_target_never_routes_to_fuzz() -> None:
 
     assert AgentRoute.FUZZ.value not in routes
     assert context.task.status is TaskStatus.COMPLETED
+
+
+async def test_bounded_truncation_marks_completed_and_persists_termination() -> None:
+    """A step-limited run ends deterministically with a report but must be
+    durably distinguishable from a full execution via task metadata."""
+    services = build_application(
+        build_mock_capabilities(),
+        runtime_policy=RuntimePolicy(max_agent_steps=2),
+    )
+    task = services.task_manager.create_task(
+        Target(
+            target_id="truncated-target",
+            path="safe-mock-fixture",
+            target_type=TargetType.SOURCE,
+        )
+    )
+    context = await services.orchestrator.run(task.task_id)
+
+    # The bounded router reserves the final slot for REPORT, so the lifecycle
+    # still reaches a report and completes; it must not be marked FAILED.
+    assert context.task.status is TaskStatus.COMPLETED
+    assert context.reports
+
+    stored = services.task_manager.get_task(task.task_id)
+    termination = stored.metadata["termination"]
+    assert termination["step_limit_reached"] is True
+    assert termination["execution_failed"] is False
+    assert termination["agent_steps_executed"] <= 2
+    assert "report" in termination["route_history"]
+    assert context.metadata["termination"]["step_limit_reached"] is True
+
+
+async def test_normal_run_persists_termination_metadata_not_truncated() -> None:
+    """A complete run records structured termination flags with no truncation."""
+    services = build_mock_application()
+    task = services.task_manager.create_task(
+        Target(
+            target_id="full-target",
+            path="safe-mock-fixture",
+            target_type=TargetType.SOURCE,
+        )
+    )
+    context = await services.orchestrator.run(task.task_id)
+
+    assert context.task.status is TaskStatus.COMPLETED
+    stored = services.task_manager.get_task(task.task_id)
+    termination = stored.metadata["termination"]
+    assert termination["step_limit_reached"] is False
+    assert termination["fallback_used"] is False
+    assert termination["execution_failed"] is False
+    assert termination["analysis_retries"] == 0
+    assert termination["agent_steps_executed"] <= services.runtime_policy.max_agent_steps
+    assert context.metadata["termination"] == termination
 
 
 class FailingSourceAgent(BaseAgent):
