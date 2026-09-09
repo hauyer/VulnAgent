@@ -130,6 +130,44 @@ def test_invalid_logical_name_rejected() -> None:
         )
 
 
+def test_tool_spec_rejects_synchronous_adapter() -> None:
+    def sync_adapter(
+        value: int,
+    ) -> int:
+        return value + 1
+
+    with pytest.raises(
+        ToolRegistrationError,
+        match="must be asynchronous",
+    ):
+        ToolSpec(
+            name="source.parse",
+            description="sync adapter",
+            adapter=sync_adapter,  # type: ignore[arg-type]
+            owner="P1",
+            capability_type="test",
+        )
+
+
+def test_tool_spec_accepts_async_callable_object() -> None:
+    class AsyncAdapter:
+        async def __call__(
+            self,
+            value: int,
+        ) -> int:
+            return value + 1
+
+    tool = ToolSpec(
+        name="source.parse",
+        description="async callable adapter",
+        adapter=AsyncAdapter(),
+        owner="P1",
+        capability_type="test",
+    )
+
+    assert tool.name == "source.parse"
+
+
 def test_require_multiple_tools() -> None:
     registry = ToolRegistry()
 

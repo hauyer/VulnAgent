@@ -3,9 +3,20 @@ from typing import Any
 
 import pytest
 
-from vulnagent.agent_runtime import AgentRoute
-from vulnagent.bootstrap import build_mock_services
+from vulnagent.agent_runtime import (
+    AgentRoute,
+    AgentRuntime,
+    RouteDecision,
+    RuntimeState,
+    Supervisor,
+)
+from vulnagent.bootstrap import (
+    build_agent_registry,
+    build_mock_capabilities,
+    build_mock_services,
+)
 from vulnagent.contracts import (
+    AnalysisContext,
     EventType,
     Target,
     TargetType,
@@ -21,6 +32,7 @@ from vulnagent.core.task_manager import (
 from vulnagent.evidence.store import (
     InMemoryEvidenceStore,
 )
+from vulnagent.core.event_bus import EventBus
 
 
 def make_target() -> Target:
@@ -29,6 +41,102 @@ def make_target() -> Target:
         path="fixture",
         target_type=TargetType.SOURCE,
     )
+
+
+class ExplodingSupervisor(Supervisor):
+    """Supervisor that fails before Planner can run."""
+
+    def decide(
+        self,
+        task: Task,
+        context: AnalysisContext,
+        state: RuntimeState,
+    ) -> RouteDecision:
+        raise RuntimeError("synthetic supervisor failure")
+
+
+class InvalidSupervisor(Supervisor):
+    """Supervisor that returns an invalid initial route."""
+
+    def decide(
+        self,
+        task: Task,
+        context: AnalysisContext,
+        state: RuntimeState,
+    ) -> RouteDecision:
+        return RouteDecision(
+            route="invalid-route",  # type: ignore[arg-type]
+            reason="synthetic invalid route",
+        )
+
+
+def build_orchestrator_with_supervisor(
+    supervisor: Supervisor,
+) -> tuple[InMemoryTaskManager, Orchestrator]:
+    """Build a real Orchestrator and AgentRuntime with one test supervisor."""
+
+    manager = InMemoryTaskManager()
+    evidence_store = InMemoryEvidenceStore()
+    event_bus = EventBus()
+    capabilities = build_mock_capabilities()
+    agents = build_agent_registry(capabilities)
+    runtime = AgentRuntime(
+        agents.as_mapping(),
+        supervisor=supervisor,
+        publish_event=event_bus.publish,
+    )
+    return manager, Orchestrator(
+        manager,
+        evidence_store,
+        runtime,
+        event_bus,
+    )
+
+
+async def test_orchestrator_handles_initial_supervisor_exception_with_diagnostic_report() -> None:
+    manager, orchestrator = build_orchestrator_with_supervisor(
+        ExplodingSupervisor()
+    )
+    task = manager.create_task(make_target())
+
+    context = await orchestrator.run(task.task_id)
+
+    stored = manager.get_task(task.task_id)
+    events = orchestrator.event_bus.list_by_task(task.task_id)
+    assert stored is not None
+    assert stored.status is TaskStatus.FAILED
+    assert context.task.status is TaskStatus.FAILED
+    assert context.reports
+    assert EventType.TASK_FAILED in {event.event_type for event in events}
+    assert any(
+        event.event_type is EventType.AGENT_ROUTED
+        and event.payload.get("route") == AgentRoute.REPORT.value
+        for event in events
+    )
+    assert not orchestrator.is_running(task.task_id)
+
+
+async def test_orchestrator_handles_invalid_initial_route_with_diagnostic_report() -> None:
+    manager, orchestrator = build_orchestrator_with_supervisor(
+        InvalidSupervisor()
+    )
+    task = manager.create_task(make_target())
+
+    context = await orchestrator.run(task.task_id)
+
+    stored = manager.get_task(task.task_id)
+    events = orchestrator.event_bus.list_by_task(task.task_id)
+    assert stored is not None
+    assert stored.status is TaskStatus.FAILED
+    assert context.task.status is TaskStatus.FAILED
+    assert context.reports
+    assert EventType.TASK_FAILED in {event.event_type for event in events}
+    assert any(
+        event.event_type is EventType.AGENT_ROUTED
+        and event.payload.get("route") == AgentRoute.REPORT.value
+        for event in events
+    )
+    assert not orchestrator.is_running(task.task_id)
 
 
 async def test_successful_task_reaches_completed() -> None:

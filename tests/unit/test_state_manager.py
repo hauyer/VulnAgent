@@ -12,6 +12,7 @@ EXPECTED_TRANSITIONS = {
 
     TaskStatus.PROFILING: {
         TaskStatus.PLANNING,
+        TaskStatus.REPORTING,
         TaskStatus.FAILED,
     },
 

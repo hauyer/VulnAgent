@@ -11,6 +11,7 @@ _TRANSITIONS: dict[TaskStatus, set[TaskStatus]] = {
 
     TaskStatus.PROFILING: {
         TaskStatus.PLANNING,
+        TaskStatus.REPORTING,
         TaskStatus.FAILED,
     },
 

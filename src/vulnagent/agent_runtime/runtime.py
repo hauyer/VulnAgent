@@ -39,6 +39,7 @@ class RuntimeResult:
     context: AnalysisContext
     termination_reason: str
     step_limit_reached: bool = False
+    execution_failed: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,8 +110,17 @@ class AgentRuntime:
         )
         state = RuntimeState(**final)
         step_limit = bool(state["runtime_metadata"].get("step_limit_reached", False))
+        execution_failed = bool(
+            state["runtime_metadata"].get("execution_failed", False)
+        )
         reason = str(state["runtime_metadata"].get("termination_reason", "workflow complete"))
-        return RuntimeResult(state=state, context=context, termination_reason=reason, step_limit_reached=step_limit)
+        return RuntimeResult(
+            state=state,
+            context=context,
+            termination_reason=reason,
+            step_limit_reached=step_limit,
+            execution_failed=execution_failed,
+        )
 
     def _build_graph(self, task: Task, context: AnalysisContext, on_route: RouteObserver | None):
         builder = StateGraph(RuntimeState)
@@ -141,6 +151,7 @@ class AgentRuntime:
                     route=fallback_route,
                     reason=str(forced_reason),
                     fallback_used=True,
+                    execution_failed=True,
                 )
 
             else:
@@ -170,6 +181,7 @@ class AgentRuntime:
                             f"{type(exc).__name__}"
                         ),
                         fallback_used=True,
+                        execution_failed=True,
                     )
 
             try:
@@ -185,6 +197,7 @@ class AgentRuntime:
                     route=fallback_route,
                     reason="supervisor supplied non-public route metadata",
                     fallback_used=True,
+                    execution_failed=True,
                 )
 
             # -------------------------------------------------
@@ -261,6 +274,8 @@ class AgentRuntime:
                     route=routed.route,
                     reason=proposed.reason,
                     fallback_used=proposed.fallback_used,
+                    execution_failed=proposed.execution_failed,
+                    step_limit_reached=proposed.step_limit_reached,
                     metadata=dict(proposed.metadata),
                 )
             else:
@@ -313,10 +328,11 @@ class AgentRuntime:
                     "termination_reason"
                 ] = decision.reason
 
-                if "step limit" in decision.reason:
-                    metadata[
-                        "step_limit_reached"
-                    ] = True
+            if decision.execution_failed:
+                metadata["execution_failed"] = True
+
+            if decision.step_limit_reached:
+                metadata["step_limit_reached"] = True
 
             # -------------------------------------------------
             # 7. Structured route trace
@@ -429,6 +445,8 @@ class AgentRuntime:
                     "agent execution failed: "
                     f"{route.value}"
                 )
+
+                metadata["execution_failed"] = True
 
                 metadata["last_agent_error"] = {
                     "route": route.value,
@@ -544,6 +562,8 @@ class AgentRuntime:
             route=decision.route,
             reason=reason,
             fallback_used=decision.fallback_used,
+            execution_failed=decision.execution_failed,
+            step_limit_reached=decision.step_limit_reached,
             metadata=dict(decision.metadata),
         )
 

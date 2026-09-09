@@ -12,6 +12,7 @@ Concrete implementations must be injected by ``bootstrap.py``.
 
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
+from inspect import iscoroutinefunction
 import re
 from typing import Any
 
@@ -66,6 +67,19 @@ class ToolSpec:
         if not callable(self.adapter):
             raise ToolRegistrationError(
                 f"Tool adapter is not callable: {self.name}"
+            )
+
+        adapter_call = getattr(
+            self.adapter,
+            "__call__",
+            None,
+        )
+        if not (
+            iscoroutinefunction(self.adapter)
+            or iscoroutinefunction(adapter_call)
+        ):
+            raise ToolRegistrationError(
+                f"Tool adapter must be asynchronous: {self.name}"
             )
 
         if not isinstance(self.owner, str) or not self.owner.strip():

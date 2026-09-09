@@ -28,6 +28,8 @@ class RouteDecision:
     reason: str
     fallback_used: bool = False
     metadata: dict[str, Any] = field(default_factory=dict)
+    execution_failed: bool = False
+    step_limit_reached: bool = False
 
 
 class AgentRouter:
@@ -58,6 +60,7 @@ class AgentRouter:
             return self._fallback(
                 history,
                 "invalid supervisor route",
+                execution_failed=True,
             )
 
         # FINISH is not an executable Agent step.
@@ -74,6 +77,7 @@ class AgentRouter:
             return self._fallback(
                 history,
                 "agent step limit reached",
+                step_limit_reached=True,
             )
 
         # A route may execute at most max_route_repeats times.
@@ -92,6 +96,7 @@ class AgentRouter:
                 history,
                 "agent step limit approaching; "
                 "reserved final step for report",
+                step_limit_reached=True,
             )
 
         return RouteDecision(
@@ -103,6 +108,9 @@ class AgentRouter:
         self,
         history: list[str],
         reason: str,
+        *,
+        execution_failed: bool = False,
+        step_limit_reached: bool = False,
     ) -> RouteDecision:
         """Return REPORT when still possible, otherwise terminate safely."""
 
@@ -122,4 +130,6 @@ class AgentRouter:
             route=route,
             reason=reason,
             fallback_used=True,
+            execution_failed=execution_failed,
+            step_limit_reached=step_limit_reached,
         )
