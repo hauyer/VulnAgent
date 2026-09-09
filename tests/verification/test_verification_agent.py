@@ -89,15 +89,18 @@ async def test_verification_agent_applies_only_final_status() -> None:
     assert all(item.status.value in {"confirmed", "rejected", "uncertain"} for item in result.findings)
 
 
-async def test_verification_agent_creates_verification_evidence() -> None:
+async def test_verification_agent_creates_per_finding_verification_evidence() -> None:
     task = make_task()
     agent = VerificationAgent(RecordingVerifier())
     result = await agent.run(task, AnalysisContext(task=task, findings=[make_candidate("v1")]))
 
     verification_evidence = [item for item in result.evidence if item.evidence_type is EvidenceType.VERIFICATION_RESULT]
     assert len(verification_evidence) == 1
-    evidence_id = verification_evidence[0].evidence_id
-    assert result.findings[0].evidence_ids == [evidence_id]
+    # The verdict evidence id is attached to the finding it documents.
+    assert result.findings[0].evidence_ids[-1] == verification_evidence[0].evidence_id
+    # The verdict evidence records the rationale for traceability.
+    assert verification_evidence[0].data["status"] == "uncertain"
+    assert verification_evidence[0].data["rationale"]
 
 
 async def test_verification_agent_does_not_mutate_input_candidates() -> None:
