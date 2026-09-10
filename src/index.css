@@ -1,0 +1,106 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    
+    /* Solarized Light / Warm Cream palette variables */
+    --solar-base03: #002b36;
+    --solar-base02: #073642;
+    --solar-base01: #586e75;
+    --solar-base00: #657b83;
+    --solar-base0: #839496;
+    --solar-base1: #93a1a1;
+    --solar-base2: #eee8d5;
+    --solar-base3: #fdf6e3;
+    --solar-yellow: #b58900;
+    --solar-orange: #cb4b16;
+    --solar-red: #dc322f;
+    --solar-magenta: #d33682;
+    --solar-violet: #6c71c4;
+    --solar-blue: #268bd2;
+    --solar-cyan: #2aa198;
+    --solar-green: #859900;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: #fdf6e3;
+    color: #2b3638;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  code, pre, kbd {
+    font-family: var(--font-mono);
+  }
+}
+
+/* Solarized Paper Grid Pattern */
+.bg-cyber-grid {
+  background-size: 32px 32px;
+  background-image: 
+    linear-gradient(to right, rgba(147, 161, 161, 0.18) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(147, 161, 161, 0.18) 1px, transparent 1px);
+}
+
+.bg-dot-matrix {
+  background-image: radial-gradient(rgba(42, 161, 152, 0.25) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* Warm Light Glow Border & Shimmer Effects */
+.tech-border-glow {
+  position: relative;
+}
+.tech-border-glow::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  background: linear-gradient(90deg, rgba(42, 161, 152, 0.5), rgba(38, 139, 210, 0.3), rgba(181, 137, 0, 0.4));
+  border-radius: inherit;
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* Warm Parchment / Cream Glass panel */
+.cyber-glass {
+  background: rgba(253, 246, 227, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(223, 214, 191, 0.8);
+}
+
+.cyber-glass-active {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(42, 161, 152, 0.5);
+  box-shadow: 0 4px 20px rgba(42, 161, 152, 0.12);
+}
+
+/* Custom scrollbars for Warm Solarized Light theme */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #eee8d5;
+}
+::-webkit-scrollbar-thumb {
+  background: #d3c7ad;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #2aa198;
+}
+
+/* Pulse animation for packet telemetry */
+@keyframes packet-flow {
+  0% { transform: translateY(-100%); opacity: 0; }
+  50% { opacity: 1; }
+  100% { transform: translateY(100%); opacity: 0; }
+}
+
+.animate-packet-flow {
+  animation: packet-flow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}

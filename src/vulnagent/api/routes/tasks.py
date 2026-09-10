@@ -53,4 +53,4 @@ async def list_task_events(task_id: str, request: Request) -> list[DomainEvent]:
 @router.get("/{task_id}/trace", response_model=list[DomainEvent])
 async def get_task_trace(task_id: str, request: Request) -> list[DomainEvent]:
     """Compatibility-friendly trace resource backed by structured events."""
-    return await list_task_events(task_id, request)
+    return await list_task_events(task_id, request)

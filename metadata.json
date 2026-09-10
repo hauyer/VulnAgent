@@ -1,0 +1,8 @@
+{
+  "name": "VulnAgent",
+  "description": "Multi-agent vulnerability analysis platform with static code audit, binary analysis, fuzzing, verification, and automated reporting.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
