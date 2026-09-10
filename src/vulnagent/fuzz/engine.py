@@ -116,7 +116,9 @@ class ControlledFuzzEngine:
         # 5. Runtime statistics
         # -------------------------------------------------
 
+        attempts = 0
         executions = 0
+        launch_failures = 0
         crashes = 0
 
         unique_signatures: set[str] = set()
@@ -150,11 +152,15 @@ class ControlledFuzzEngine:
                     work_dir=work_dir,
                 )
 
-                executions += 1
+                attempts += 1
 
-                unique_signatures.add(
-                    result.signature
-                )
+                if result.executed:
+                    executions += 1
+                    unique_signatures.add(
+                        result.signature
+                    )
+                else:
+                    launch_failures += 1
 
                 # -------------------------------------------------
                 # 7. Crash detection and deduplication
@@ -212,12 +218,14 @@ class ControlledFuzzEngine:
         return FuzzResult(
             task_id=request.task_id,
             target_id=request.target_id,
-            executed=True,
+            executed=executions > 0,
             crashes=crashes,
             coverage=coverage_proxy,
             evidence=evidence,
             metadata={
+                "attempts": attempts,
                 "executions": executions,
+                "launch_failures": launch_failures,
                 "unique_execution_signatures": (
                     len(unique_signatures)
                 ),
@@ -389,6 +397,7 @@ class ControlledFuzzEngine:
                 "returncode": (
                     result.returncode
                 ),
+                "executed": result.executed,
                 "timed_out": (
                     result.timed_out
                 ),
@@ -401,6 +410,7 @@ class ControlledFuzzEngine:
                 "signature": (
                     result.signature
                 ),
+                "error": result.error,
                 "input_sha256": input_hash,
 
                 # Step 21:
@@ -430,6 +440,7 @@ class ControlledFuzzEngine:
                 "returncode": (
                     result.returncode
                 ),
+                "executed": result.executed,
                 "timed_out": (
                     result.timed_out
                 ),
@@ -450,6 +461,7 @@ class ControlledFuzzEngine:
                         errors="replace"
                     )
                 ),
+                "error": result.error,
 
                 # Step 21:
                 # Preserve runtime trace together

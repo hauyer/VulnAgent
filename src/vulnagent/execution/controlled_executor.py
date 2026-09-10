@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,24 +22,18 @@ class ExecutionResult:
     stderr: bytes
     signature: str
     runtime_trace: list[str]
+    executed: bool = False
+    error: str | None = None
 
 
 def build_command(target: Path) -> list[str]:
-    """
-    Build the command used to execute the target.
+    """Build the command used to execute a controlled local target."""
 
-    On Windows, Python scripts are executed through
-    the current Python interpreter.
-
-    On Linux/macOS, executable files are executed directly.
-    """
-
-    if os.name == "nt":
-        if target.suffix.lower() == ".py":
-            return [
-                sys.executable,
-                str(target),
-            ]
+    if target.suffix.lower() == ".py":
+        return [
+            sys.executable,
+            str(target),
+        ]
 
     return [str(target)]
 
@@ -141,4 +134,6 @@ class ControlledExecutor:
             runtime_trace=list(
                 sandbox_result.runtime_trace
             ),
+            executed=sandbox_result.executed,
+            error=sandbox_result.error,
         )

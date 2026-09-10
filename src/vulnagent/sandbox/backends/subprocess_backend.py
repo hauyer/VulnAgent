@@ -179,6 +179,14 @@ class SubprocessBackend(SandboxBackend):
 
         trace: List[str] = []
 
+        if not result.executed:
+            trace.append("process_launch_failed")
+            trace.append(f"error={result.error}")
+            trace.append(
+                f"duration_ms={result.duration_ms:.2f}"
+            )
+            return trace
+
         trace.append("process_started")
 
         if result.timed_out:
