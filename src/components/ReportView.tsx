@@ -198,7 +198,7 @@ ${recommendations.map((r, i) => `${i + 1}. ${r}`).join("\n") || "No generated re
           </h3>
 
           <div className="space-y-4">
-            {reportFindings.map((f) => (
+            {content.findings.map(({ finding: f, verification }) => (
               <div
                 key={f.vulnerability_id}
                 className="p-5 rounded-xl bg-[#fcf8ed] border border-[#dfd6bf] space-y-3 shadow-2xs"
@@ -214,6 +214,15 @@ ${recommendations.map((r, i) => `${i + 1}. ${r}`).join("\n") || "No generated re
                 </div>
 
                 <p className="text-xs text-[#586e75] leading-relaxed">{f.description}</p>
+
+                {verification && (
+                  <div className="text-xs bg-[#eef7f6] border border-[#bfe3e0] rounded-lg p-3 space-y-1">
+                    <div className="font-mono text-[#2aa198] font-semibold">
+                      Verification: {verification.status.toUpperCase()} · {Math.round(verification.confidence * 100)}%
+                    </div>
+                    <p className="text-[#586e75] leading-relaxed">{verification.rationale}</p>
+                  </div>
+                )}
 
                 {f.location && (
                   <div className="text-xs font-mono text-[#586e75] bg-[#f5eed9] p-2.5 rounded-lg border border-[#dfd6bf]">
