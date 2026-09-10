@@ -1,0 +1,339 @@
+VulnAgent
+P8 Codex 完整前端开发指令
+Platform / API / Frontend
+适用阶段：V0.2 Architecture Freeze → V0.3 First Real Vulnerability Analysis Loop
+用途：成员 P8 前端开发、API 联调、Codex 执行、阶段验收
+2026 年 9 月
+0. 任务定位
+你现在负责 VulnAgent 项目的 P8：Platform / API / Frontend。你的目标不是制作一个普通后台管理系统，也不是制作一个以“黑客风格”为主的视觉 Demo，而是构建一个 AI Security Analysis Console。
+前端需要完整展示 VulnAgent 的核心系统能力：
+Task 生命周期
+Multi-Agent 工作流
+Agent Runtime
+Supervisor / Router 路由
+Finding
+Evidence
+Verification
+Reviewer
+Trace
+Report
+前端需要让课程答辩老师可以直观看到 VulnAgent 的核心创新点：
+Multi-Agent
+Bounded Routing
+Evidence First
+Independent Verification
+Structured Trace
+Candidate → Verification → Report 的完整链路
+1. 开发原则
+1.1 前后端边界
+前端只能通过 HTTP API 与后端通信。
+禁止：frontend → 直接访问 Python 对象frontend → 直接读取 analyzer 目录frontend → 直接读取后端临时文件frontend → 直接读取内部缓存
+正确方式：Frontend  ↓API Client  ↓FastAPI  ↓Application Service  ↓Core / Contracts
+1.2 不得擅自修改公共 Contract
+如果页面需要某个字段但当前 API 没有，不要立即修改 src/vulnagent/contracts/。正确流程如下：
+页面缺少信息  ↓检查现有 API  ↓检查公共 Contract  ↓确认确实缺失  ↓提出最小接口需求  ↓与 P1 / 对应 Owner 协调  ↓再进行 API 或 Contract 修改
+不得为了 UI 方便破坏公共语义。
+1.3 API Route 不承担业务逻辑
+如果需要修改 src/vulnagent/api/，API Route 只能负责参数校验、调用服务、错误转换、Response 序列化和 HTTP Status Code。
+禁止在 API Route 中实现：
+漏洞分析
+Finding 确认
+Evidence 推断
+Verification
+Agent Routing
+Report 生成算法
+2. 推荐开发技术栈
+ReactTypeScriptViteTailwind CSSshadcn/uiLucide ReactTanStack QueryReact RouterRecharts
+推荐 Node.js 20+。
+3. 推荐 Skill
+frontend-design+web-design-guidelines
+如果本地 Skill 已安装，则在开发前显式读取并遵守。
+3.1 frontend-design 作用
+整体 UI 方向
+页面布局
+视觉层级
+Typography
+Dashboard
+交互
+页面细节
+避免模板化 AI UI
+不要简单生成“白底 + 紫色渐变 + 大量圆角 Card”，也不要生成“Matrix + 黑绿 Terminal + 骷髅 + 大量炫技粒子”。整体视觉应该 Professional、Technical、Security、Modern、Clean、High Information Density。
+3.2 web-design-guidelines 作用
+前端主要页面完成后，必须使用该 Skill 做一次 UI / UX Review。重点检查 accessibility、focus state、keyboard navigation、responsive、loading、error、empty state、typography、form、dialog、tooltip、animation、performance 和 consistency。
+4. 推荐视觉设计
+项目视觉方向：AI Security Analysis Console。建议整体采用深色专业安全分析平台风格。
+基础背景：Graphite / Slate / Neutral强调色：Cyan / BlueRunning     BlueCompleted   GreenFailed      RedCandidate   AmberConfirmed   RedUncertain   YellowRejected    Gray
+状态信息不能只靠颜色表示，必须同时使用 Icon + Text + Badge + Color。
+5. 页面总体结构
+┌─────────────────────────────────────────────┐│ VulnAgent                       Runtime      │├──────────────┬──────────────────────────────┤│ Dashboard    │                              ││ Tasks        │                              ││ Runtime      │        Main Workspace        ││ Findings     │                              ││ Evidence     │                              ││ Reports      │                              │└──────────────┴──────────────────────────────┘
+统一采用 Sidebar + Topbar + Main Content。
+6. 路由设计
+/dashboard/tasks/tasks/:taskId/runtime/findings/findings/:findingId/evidence/reports/tasks/:taskId/report
+7. 页面开发优先级
+P8-01 Frontend Foundation↓P8-02 Dashboard↓P8-03 Task List↓P8-04 Task Detail↓P8-05 Agent Runtime↓P8-06 Finding↓P8-07 Verification↓P8-08 Evidence↓P8-09 Trace↓P8-10 Report↓P8-11 Error / Loading / Empty↓P8-12 UI / UX Review↓P8-13 Frontend / Backend Integration
+8. 推荐目录结构
+frontend/├── src/│   ├── app/│   │   ├── App.tsx│   │   ├── router.tsx│   │   └── providers.tsx│   ├── pages/│   │   ├── dashboard/│   │   ├── tasks/│   │   ├── runtime/│   │   ├── findings/│   │   ├── evidence/│   │   └── reports/│   ├── components/│   │   ├── ui/│   │   ├── layout/│   │   ├── task/│   │   ├── runtime/│   │   ├── finding/│   │   ├── evidence/│   │   ├── verification/│   │   ├── trace/│   │   └── report/│   ├── api/│   │   ├── client.ts│   │   ├── health.ts│   │   ├── tasks.ts│   │   ├── findings.ts│   │   ├── evidence.ts│   │   ├── trace.ts│   │   └── reports.ts│   ├── hooks/│   ├── types/│   ├── lib/│   ├── constants/│   └── styles/├── public/├── index.html├── package.json├── tsconfig.json├── vite.config.ts└── README.md
+9. API Client 规范
+必须建立统一 API Client。禁止页面组件直接散落 fetch 请求。
+Page  ↓Hook  ↓API Module  ↓API Client  ↓FastAPI
+10. API Client
+export interface ApiError {  code?: string  message: string  details?: unknown}
+统一处理 base URL、JSON、timeout、HTTP error、API error、network error 和 response parsing。API Base URL 必须通过 VITE_API_BASE_URL 配置，禁止写死生产 URL。
+11. TanStack Query
+统一使用 TanStack Query 管理服务器状态。建议 Hooks：
+useHealth()useTasks()useTask(taskId)useCreateTask()useRunTask()useTaskFindings(taskId)useTaskEvidence(taskId)useTaskTrace(taskId)useTaskReport(taskId)
+不要自己在组件中重复维护 loading、error、refetch、cache。
+12. TypeScript 类型
+类型应该映射 API Response，最终字段名称必须以当前后端 OpenAPI 为准，不要自行发明与后端冲突的状态。
+export type TaskStatus =  | "pending"  | "running"  | "completed"  | "failed"
+13. API 适配原则
+如果后端字段名与前端展示模型不同，可在 API Layer 内做适配，不应为了前端命名习惯修改公共 Contract。
+API DTO  ↓Frontend Adapter  ↓UI Model
+14. Dashboard 页面
+Dashboard 必须作为首页重点页面。顶部显示 Total Tasks、Running Tasks、Total Findings、Confirmed Findings。
+第二部分展示 Runtime Overview；第三部分展示 Recent Tasks；第四部分可在有真实数据时使用 Recharts 显示 Severity Distribution。
+MetricCard：Title / Value / Trend or Subtitle / Icon
+Runtime Overview：Planner / Source / Binary / Fuzz / Verification / Reviewer / Report
+15. Tasks 页面
+任务列表建议使用 Table，并支持 Search、Status Filter、Sort、Pagination。
+如果后端暂时不支持服务器分页，可以先客户端分页，但需明确 TODO，后续替换为 server pagination。
+Task IDTargetTypeStatusFindingsCreated AtDurationAction
+16. Create Task
+需要提供 New Analysis 按钮，点击后打开 Dialog。字段完全按照后端 API 要求生成，不要发明后端不存在的字段。
+17. Task Detail
+Task Detail 是最重要页面之一。页面顶部显示 Task ID、Target、Status、Created At、Duration；右侧可提供 Run、Refresh、Report。
+推荐 Tabs：Overview、Runtime、Findings、Evidence、Trace、Report。如果某项后端暂时没有数据，展示 Empty State，不要报错。
+18. Task Analysis Progress
+Overview 内增加 Analysis Progress。真实运行顺序必须依据 Trace / Runtime 数据生成，不能写死固定 Source → Binary → Fuzz → Verification，因为当前 AgentRuntime 是动态有界路由。
+Planner ✓Source Analysis ✓Audit ✓Verification RunningReviewer PendingReport Pending
+19. Agent Runtime 页面
+这是重点创新展示页面。应提供流程可视化区域，并从 Runtime / Trace 获取真实状态。
+PendingRunningCompletedFailedSkippedRetrying
+20. Agent Node
+每个 Agent 节点建议显示 Agent Name、Status、Duration、Route Count、Evidence Count、Finding Count。
+Source AuditRunning1.42s2 Findings3 Evidence
+21. Agent Detail Panel
+点击 Agent Node 时打开 Sheet，展示 Agent Name、Status、Input Summary、Output Summary、Start Time、End Time、Duration、Evidence IDs、Errors、Metadata。
+禁止展示 Private Chain-of-Thought，也禁止尝试获取 LLM internal reasoning，只能展示结构化 Trace。
+22. Runtime Safety 信息
+如果后端暴露 max_agent_steps、max_route_repeats、max_analysis_retries，可在 Runtime 页面展示，从而体现 Bounded Routing。
+如果 API 当前没有暴露，不允许私自模拟数据。
+23. Trace 页面
+Trace 必须做成 Timeline，清晰展示 TASK_STARTED、AGENT_ROUTED、AGENT_COMPLETED 等结构化事件。
+14:20:01 TASK_STARTED14:20:02 AGENT_ROUTED  Planner → Source14:20:03 AGENT_COMPLETED Source14:20:04 AGENT_ROUTED  Source → Source Audit
+24. Findings 页面
+使用 Data Table。字段 API 不存在时隐藏该列，不要伪造。
+SeverityTitleCWESourceStatusConfidenceEvidence CountAction
+25. Finding 状态
+严格区分 CANDIDATE、CONFIRMED、REJECTED、UNCERTAIN。Discovery 结果必须在视觉上和 Verification 结果区分，不能将 CANDIDATE 渲染成 CONFIRMED。
+26. Finding Detail
+点击 Finding 打开右侧 Drawer。顶部显示 Finding Title、Status Badge、Severity、Confidence；正文显示 Description、Location、Source、CWE、Evidence、Verification、Reviewer、Metadata。
+27. Verification 页面
+Verification 必须作为重点功能。VerificationPanel 至少显示 Final Status、Confidence、Severity、Reason。
+如有检查项，则逐项显示 Evidence Completeness、Location Validation、Consistency Check、Dynamic Verification。
+28. Verification 状态
+视觉上突出 CONFIRMED、REJECTED、UNCERTAIN，但不能只显示最终 Badge，必须同时显示 Reason + Evidence，体现 Evidence First。
+29. Evidence 页面
+Evidence 是核心页面之一。最小实现为 Evidence List。
+Evidence IDTypeSourceLocationSummaryRelated FindingCreated At
+30. Evidence Detail
+点击后显示 Source、Type、Location、Artifact、Summary、Metadata、Related Finding、Verification Relation。
+31. Evidence Graph
+如果时间允许，可实现 Evidence Graph。节点可包括 Finding、Evidence、Verification、Agent；关系可包括 SUPPORTS、DERIVED_FROM、VERIFIES、CONTRADICTS。
+如果当前后端没有明确关系字段，不要自己推断关系，优先显示普通 Evidence Chain。
+32. Report 页面
+Report 页面应类似专业 Security Report Viewer，结构包括 Executive Summary、Task Information、Findings、Evidence、Verification、Agent Runtime、Limitations。
+33. Report Actions
+如果后端支持 Download / Export 则接入；如果当前没有，可先实现 Print，但不要伪造 PDF API。
+34. Loading State
+任何网络请求必须有 Loading，推荐使用 Skeleton，不要仅用 “Loading...” 作为主要 UI。
+35. Empty State
+例如没有 Finding 时，不要显示空表，应显示明确 Empty State，例如 “No findings detected”。
+36. Error State
+API Error 必须明确显示 Task not found、Failed to load task、Backend unavailable 等状态，不能让页面直接崩溃。
+37. Toast
+Task created、Task started、Request failed、Report exported 等适合 Toast；不要所有操作都 Toast。
+38. Accessibility
+必须支持 Keyboard、Focus、aria-label、Dialog focus trap、Tooltip、Contrast、Form Label。图标按钮必须有 aria-label。
+aria-label="Refresh task"
+39. Responsive
+主要优先 1440px / 1920px Desktop，同时兼容 1024px。移动端保证基本可访问即可，无需优先 Mobile First，因为课程演示以电脑为主。
+40. 动效
+只使用轻量动效：Page transition、Drawer、Collapse、Running pulse、Progress、Hover。
+不要大量粒子、星空、Matrix Rain、复杂 3D 或大面积 Glow。
+41. 图表
+使用 Recharts，并且只在有真实数据时显示 Severity Distribution、Finding Status Distribution、Task Trend、Agent Duration。
+禁止 Mock Data 进入最终正式页面；开发阶段 Mock 必须明确 dev-only，并在接入 API 后移除。
+42. Design System
+建立统一 Token：background、surface、surface-muted、border、text-primary、text-secondary、accent、success、warning、danger。避免组件内大量随机颜色。
+43. Badge 组件
+统一 StatusBadge、SeverityBadge、AgentStatusBadge，不要每个页面自己写颜色。
+44. 时间显示
+统一封装 formatDateTime()、formatDuration()，避免各页面格式不一致。
+45. ID 显示
+Task ID / Evidence ID / Finding ID 默认截断，Hover 显示完整，点击支持 Copy。
+46. 安全展示
+如果 API 返回本地文件系统路径，页面应谨慎展示，不要在首页大范围显示完整本机绝对路径，可在详情页保留。
+47. 不得泄露敏感内容
+如果 API 意外返回 API Key、Token、Password、Secret，前端不能主动展示，应记录问题并报告给后端。
+48. 后端联调
+开始联调前确认 GET /health 正常，之后依次测试 POST /tasks、GET /tasks、GET /tasks/{id}、POST /tasks/{id}/run，再接入 findings、evidence、events、trace、report。
+49. OpenAPI
+以 /docs 和 /openapi.json 作为 API 当前行为依据。如果 README 与 OpenAPI 冲突，优先检查后端真实实现，不要自行猜测。
+50. API 错误格式
+如果当前 API 错误结构不统一，P8 可以提出统一错误格式需求，但修改前与 P1 协调。
+{  "code": "TASK_NOT_FOUND",  "message": "Task not found",  "details": {}}
+51. 自动刷新
+Running Task 页面可以使用 Polling，推荐 3s 或 5s；当 Task 进入 COMPLETED / FAILED 后停止 Polling。
+52. 不要过早实现 WebSocket
+除非当前后端已经提供 WebSocket，否则第一阶段不要为了“实时”引入复杂通信层，先 Polling。
+53. 组件复用
+不要分别实现三套完全重复的 TaskStatusBadge、FindingStatusBadge、RuntimeStatusBadge，优先抽取公共 StatusBadge，再通过 Variant 控制。
+54. 状态管理
+服务器数据：TanStack QueryUI 状态：React state
+第一阶段不要引入复杂 Redux，除非确有必要。
+55. 测试
+至少要求 npm run build 成功。推荐增加 Vitest + React Testing Library，重点测试 StatusBadge、Task Table、Finding Table、API Error State、Empty State。
+56. API Integration Test
+Health loads
+Task list loads
+Task detail loads
+Task not found
+Task run action
+Finding list
+Evidence list
+Trace list
+Report
+57. 构建检查
+npm run lintnpm run build# 如配置测试npm run test
+58. 代码质量
+TypeScript strict
+不允许大量 any
+不允许 console.log 残留
+不允许未使用 import
+不允许重复 API URL
+不允许组件超过合理长度；超过约 250-300 行的业务组件优先拆分
+59. 允许 Mock 的范围
+允许开发 UI 时使用 Mock 数据，但必须与生产 API 解耦，推荐 src/mocks/。最终联调时逐步删除页面内部 Mock。
+60. 禁止行为
+不要为了快直接重写整个 frontend；若已存在，先阅读并增量修改
+不得直接修改 P1/P2/P3/P4/P5/P6/P7/P9 目录，除非明确跨模块需求
+不得重写 contracts
+不得在 frontend 复制一套后端业务逻辑
+不得在 React 中判断漏洞是否 CONFIRMED；最终状态只能显示后端 Verification 结果
+61. Git 分支
+git checkout developgit pull origin developgit checkout feature/platform# 若分支不存在git checkout -b feature/platform
+62. 同步 Develop
+git fetch origingit rebase origin/develop
+也可按团队统一 merge 策略执行。
+63. Commit 规范
+feat(frontend): add dashboard layoutfeat(frontend): add task detail pagefeat(runtime): add agent trace timelinefeat(findings): add finding detail drawerfeat(evidence): add evidence viewerfix(frontend): handle task api error state
+64. PR 描述
+修改内容
+修改原因
+API 影响
+Contract 影响
+测试结果
+跨模块影响
+未完成项
+65. P8 阶段任务拆分
+P8-01 Frontend Foundation
+完成 React、TypeScript、Vite、Tailwind CSS、shadcn/ui、Router、TanStack Query、API Client、Layout；验收要求 npm run build 成功。
+P8-02 Dashboard
+完成 Metric Cards、Recent Tasks、Runtime Overview；验收要求 Dashboard 打开无错误。
+P8-03 Task Management
+完成 Task List、Create Task、Task Detail、Run Task。
+P8-04 Agent Runtime
+完成 Agent Nodes、Route Visualization、Runtime Status、Agent Detail。
+P8-05 Finding / Verification
+完成 Finding Table、Finding Detail、Verification Panel、Status Badge。
+P8-06 Evidence / Trace
+完成 Evidence List、Evidence Detail、Trace Timeline。
+P8-07 Report
+完成 Report Viewer。
+P8-08 UI Review
+使用 web-design-guidelines 检查 Accessibility、Responsive、Focus、Error、Loading、Empty、Consistency。
+66. 第一阶段 Definition of Done
+66.1 工程
+React + TypeScript 正常构建
+无严重 lint
+无大量 any
+API Client 统一
+页面不散落 fetch
+组件划分合理
+66.2 架构
+前端只访问 API
+未直接访问 Python 内部
+未修改 Analyzer
+未修改 Verification 语义
+未擅自修改 Contract
+66.3 页面
+Dashboard
+Tasks
+Task Detail
+Runtime
+Findings
+Evidence
+Trace
+Report
+66.4 UX
+每个主要页面均具有 Loading、Empty、Error 状态。
+66.5 VulnAgent 特性展示
+Task Lifecycle
+Multi-Agent
+Agent Route
+Finding
+Evidence
+Verification
+Trace
+Report
+67. 最终课程展示目标
+首页进入后，老师应该快速理解这是一个 AI Multi-Agent Vulnerability Analysis Platform；继续进入 Task 后，应该依次看到目标是什么、Agent 如何协同、发现了什么 Candidate、有哪些 Evidence、Verification 为什么确认或否决，以及最终 Report 是什么。
+68. 最重要的展示链
+Task ↓Planner ↓Agent Runtime ↓Discovery ↓Candidate ↓Evidence ↓Verification ↓Reviewer ↓Report
+69. 不追求的内容
+复杂权限系统
+多租户
+WebSocket
+3D Agent Graph
+复杂 Evidence 图数据库
+国际化
+大量主题
+复杂动画
+高度定制富文本编辑器
+70. 开发优先级原则
+Correct> Stable> Usable> Explainable> Beautiful> Fancy
+Beautiful 仍然重要，但不能为了视觉效果破坏工程。
+71. Codex 执行方式
+在开始修改代码前，必须先阅读 README.md、AGENTS.md、docs/、frontend/、src/vulnagent/api/、src/vulnagent/contracts/，重点理解 Task、TaskStatus、Finding、Evidence、Verification、Trace、Report。不要在未理解现有实现前重写。
+72. 第一步要求
+先执行 Inspect only，不要立即修改。首先输出：
+当前 frontend 状态
+当前 API 状态
+当前 OpenAPI 能提供的数据
+当前缺失页面
+API 与前端之间是否存在字段缺口
+推荐最小修改计划
+73. 第二步要求
+确认现状后，优先完成 Frontend Foundation，不要一次完成所有页面。
+74. 第三步要求
+按 Dashboard → Task → Runtime → Finding → Evidence → Trace → Report 的顺序增量实现。每完成一个模块运行 npm run build；如有测试则运行 npm run test。
+75. 修改范围控制
+每次修改应尽可能集中在 frontend/。如果必须修改 src/vulnagent/api/，必须说明 Why、What、Contract Impact、Backward Compatibility。
+76. 最终验收输出
+修改文件：列出全部新增或修改文件
+实现功能：逐项说明 Dashboard、Task、Runtime、Finding、Evidence、Trace、Report
+API 使用情况：列出使用的 Endpoint
+Contract 影响：明确 No contract changes 或说明具体变更
+测试结果：列出 npm run lint、npm run build、npm run test 结果
+已知限制：明确仍未实现内容
+后续建议：只列真正需要的下一步
+77. 最终核心要求
+不要把该任务理解成“给 VulnAgent 做一个好看的网页”，而应该理解成：构建一个能够清晰解释 VulnAgent 多 Agent 漏洞分析流程、证据链和独立 Verification 机制的安全分析前端。
+Task↓Agent Runtime↓Finding↓Evidence↓Verification↓Report
+所有状态、数据和结论均来自真实后端 API，而不是由前端自行推断。
+78. 最终目标
+最终 P8 应交付 frontend/，形成一个美观、清晰、工程化、低耦合、可演示、可扩展的 VulnAgent AI Security Analysis Console。
+在此基础上，与 P1 联调 Task / Runtime / Trace，与 P7 联调 Verification，与 P9 联调 Evidence / Report。不要进行无必要的跨模块重构，不要改变已经冻结的总体架构。
+优先保证一条真实任务从 Create Task → Run → Runtime → Finding → Verification → Evidence → Report 能够在前端稳定展示。
+团队约束说明：本指令应与《VulnAgent 九人团队开发协作规范与成员开发流程手册 V0.2》同时执行；如两者发生冲突，以公共 Contracts、Architecture Freeze 和 Owner 边界要求为准。
