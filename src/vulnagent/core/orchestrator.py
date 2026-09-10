@@ -423,7 +423,7 @@ class Orchestrator:
             extra={
                 "task_id": task_id,
                 "agent": producer,
-                "module": "core.orchestrator",
+                "component": "core.orchestrator",
                 "event": event_type.value,
             },
         )

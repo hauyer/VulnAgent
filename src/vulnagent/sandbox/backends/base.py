@@ -19,6 +19,7 @@ class SandboxBackend(ABC):
         command: List[str],
         policy: SandboxPolicy,
         work_dir: Optional[Path] = None,
+        input_data: bytes = b"",
     ) -> SandboxResult:
         """
         Execute a command according to the sandbox policy.

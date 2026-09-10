@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,24 +22,18 @@ class ExecutionResult:
     stderr: bytes
     signature: str
     runtime_trace: list[str]
+    executed: bool = False
+    error: str | None = None
 
 
 def build_command(target: Path) -> list[str]:
-    """
-    Build the command used to execute the target.
+    """Build the command used to execute a controlled local target."""
 
-    On Windows, Python scripts are executed through
-    the current Python interpreter.
-
-    On Linux/macOS, executable files are executed directly.
-    """
-
-    if os.name == "nt":
-        if target.suffix.lower() == ".py":
-            return [
-                sys.executable,
-                str(target),
-            ]
+    if target.suffix.lower() == ".py":
+        return [
+            sys.executable,
+            str(target),
+        ]
 
     return [str(target)]
 
@@ -86,6 +79,7 @@ class ControlledExecutor:
         sandbox_result = self.sandbox.execute(
             command=command,
             work_dir=work_dir,
+            input_data=input_data,
         )
 
         # SandboxResult 中的 stdout/stderr 为字符串。
@@ -107,11 +101,7 @@ class ControlledExecutor:
 
         # 保持原来的 Fuzz Engine Crash 判断逻辑：
         # 只有负返回码才认为是信号级 Crash。
-        crashed = (
-            returncode is not None
-            and returncode < 0
-            and not sandbox_result.timed_out
-        )
+        crashed = sandbox_result.crashed
 
         # Timeout 使用固定 signature
         if sandbox_result.timed_out:
@@ -144,4 +134,6 @@ class ControlledExecutor:
             runtime_trace=list(
                 sandbox_result.runtime_trace
             ),
+            executed=sandbox_result.executed,
+            error=sandbox_result.error,
         )

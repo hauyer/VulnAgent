@@ -20,3 +20,17 @@ jobs:
         run: python -m pytest tests/architecture -q
       - name: Full test gate
         run: python -m pytest -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Frontend typecheck
+        run: npm run lint
+      - name: Frontend build
+        run: npm run build

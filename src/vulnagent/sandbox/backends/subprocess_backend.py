@@ -21,6 +21,7 @@ class SubprocessBackend(SandboxBackend):
         command: List[str],
         policy: SandboxPolicy,
         work_dir: Optional[Path] = None,
+        input_data: bytes = b"",
     ) -> SandboxResult:
 
         policy.validate()
@@ -52,7 +53,7 @@ class SubprocessBackend(SandboxBackend):
                 stderr=subprocess.PIPE,
                 cwd=str(work_dir) if work_dir else None,
                 shell=False,
-                text=True,
+                text=False,
                 env=environment,
                 start_new_session=True,
             )
@@ -61,11 +62,12 @@ class SubprocessBackend(SandboxBackend):
 
             try:
                 stdout, stderr = process.communicate(
+                    input=input_data,
                     timeout=timeout_seconds
                 )
 
-                result.stdout = stdout
-                result.stderr = stderr
+                result.stdout = stdout.decode(errors="replace")
+                result.stderr = stderr.decode(errors="replace")
                 result.return_code = process.returncode
 
             except subprocess.TimeoutExpired as exc:
@@ -73,10 +75,10 @@ class SubprocessBackend(SandboxBackend):
                 result.timed_out = True
 
                 if exc.stdout:
-                    result.stdout = exc.stdout
+                    result.stdout = exc.stdout.decode(errors="replace") if isinstance(exc.stdout, bytes) else exc.stdout
 
                 if exc.stderr:
-                    result.stderr = exc.stderr
+                    result.stderr = exc.stderr.decode(errors="replace") if isinstance(exc.stderr, bytes) else exc.stderr
 
                 self._terminate_process(
                     process,
@@ -86,10 +88,10 @@ class SubprocessBackend(SandboxBackend):
                 stdout, stderr = process.communicate()
 
                 if stdout:
-                    result.stdout += stdout
+                    result.stdout += stdout.decode(errors="replace") if isinstance(stdout, bytes) else stdout
 
                 if stderr:
-                    result.stderr += stderr
+                    result.stderr += stderr.decode(errors="replace") if isinstance(stderr, bytes) else stderr
 
                 result.return_code = process.returncode
 
@@ -176,6 +178,14 @@ class SubprocessBackend(SandboxBackend):
         """
 
         trace: List[str] = []
+
+        if not result.executed:
+            trace.append("process_launch_failed")
+            trace.append(f"error={result.error}")
+            trace.append(
+                f"duration_ms={result.duration_ms:.2f}"
+            )
+            return trace
 
         trace.append("process_started")
 

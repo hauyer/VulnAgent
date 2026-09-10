@@ -17,7 +17,7 @@
 
 `StaticBinaryReverseAnalyzer` 实现已有 `BinaryAnalyzer` 协议，只读取本地普通文件，
 不加载或执行目标、不启动工具、不调用模型。`MockBinaryReverseAnalyzer` 保持可用。
-公共 `contracts/binary.py` 未变更；服务启动配置仍注入原 Mock，真实解析器的系统接入需 P1 协调。
+公共 `contracts/binary.py` 未变更；`mock` Profile 保留原 Mock，`v03-source` Profile 已注入真实静态解析器。
 
 ```python
 from vulnagent.contracts import BinaryAnalysisRequest

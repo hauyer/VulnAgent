@@ -1,4 +1,4 @@
-"""Mock structured report agent."""
+"""Structured report agent using the injected report capability."""
 
 from vulnagent.agents.base import BaseAgent
 from vulnagent.contracts import AgentMessage, AgentMessageType, AgentResult, AnalysisContext, ReportGenerator, ReportRequest, Task

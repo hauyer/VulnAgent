@@ -37,12 +37,15 @@ from vulnagent.agents import (
 from vulnagent.agents.registry import AgentRegistry
 from vulnagent.analyzers.binary.reverse import (
     MockBinaryReverseAnalyzer,
+    StaticBinaryReverseAnalyzer,
 )
 from vulnagent.analyzers.source.audit import (
     MockSourceAuditor,
+    PythonSourceAuditor,
 )
 from vulnagent.analyzers.source.parser import (
     MockSourceParser,
+    SourceProjectParser,
 )
 from vulnagent.contracts import (
     EvidenceRepository,
@@ -58,6 +61,7 @@ from vulnagent.evidence.store import (
     InMemoryEvidenceStore,
 )
 from vulnagent.fuzz.mock import MockFuzzEngine
+from vulnagent.fuzz.engine import ControlledFuzzEngine
 from vulnagent.llm.base import BaseLLM
 from vulnagent.llm.router import LLMRouter
 from vulnagent.report.generator import (
@@ -70,6 +74,12 @@ from vulnagent.settings import (
 from vulnagent.verification.verifier import (
     MockVerifier,
 )
+from vulnagent.verification.evidence_verifier import EvidenceVerifier
+
+
+MOCK_PROFILE = "mock"
+V03_SOURCE_PROFILE = "v03-source"
+SUPPORTED_PROFILES = frozenset({MOCK_PROFILE, V03_SOURCE_PROFILE})
 
 
 @dataclass(
@@ -107,6 +117,23 @@ def build_mock_capabilities() -> CapabilityBundle:
         binary_analyzer=MockBinaryReverseAnalyzer(),
         fuzz_engine=MockFuzzEngine(),
         verifier=MockVerifier(),
+        report_generator=StructuredReportGenerator(),
+    )
+
+
+def build_v03_source_capabilities() -> CapabilityBundle:
+    """Build real Source/Verification/Report capabilities for V0.3.
+
+    Binary inspection is bounded and non-executing. Fuzzing uses the existing
+    authorization-gated local controlled executor and remains opt-in.
+    """
+
+    return CapabilityBundle(
+        source_parser=SourceProjectParser(),
+        source_auditor=PythonSourceAuditor(),
+        binary_analyzer=StaticBinaryReverseAnalyzer(),
+        fuzz_engine=ControlledFuzzEngine(),
+        verifier=EvidenceVerifier(),
         report_generator=StructuredReportGenerator(),
     )
 
@@ -379,6 +406,35 @@ def build_mock_application(
     return build_application(
         build_mock_capabilities(),
         settings=settings,
+    )
+
+
+def build_v03_source_application(
+    *,
+    settings: Settings | None = None,
+) -> ApplicationServices:
+    """Build the canonical V0.3 source-analysis application."""
+
+    return build_application(
+        build_v03_source_capabilities(),
+        settings=settings,
+    )
+
+
+def build_profile_application(
+    settings: Settings | None = None,
+) -> ApplicationServices:
+    """Build an application from the explicitly configured profile."""
+
+    resolved_settings = settings if settings is not None else get_settings()
+    profile = resolved_settings.vulnagent_profile.strip().casefold()
+    if profile == MOCK_PROFILE:
+        return build_mock_application(settings=resolved_settings)
+    if profile == V03_SOURCE_PROFILE:
+        return build_v03_source_application(settings=resolved_settings)
+    raise ValueError(
+        f"Unsupported VULNAGENT_PROFILE {profile!r}; "
+        f"expected one of {sorted(SUPPORTED_PROFILES)}"
     )
 
 

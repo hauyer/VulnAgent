@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     app_env: str = "development"
     log_level: str = "INFO"
 
+    vulnagent_profile: str = "v03-source"
+
     llm_provider: str = "mock"
 
     deepseek_api_key: str | None = None

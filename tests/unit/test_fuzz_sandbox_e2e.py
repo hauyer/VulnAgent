@@ -62,6 +62,7 @@ print("input_size:", len(data))
     assert result.target_id == "e2e-target"
 
     assert result.metadata["executions"] > 0
+    assert result.metadata["launch_failures"] == 0
 
     # ---------------------------------------------
     # Evidence
@@ -90,6 +91,10 @@ print("input_size:", len(data))
     ]
 
     assert len(runtime_evidence) > 0
+    assert any(
+        item.data["executed"] is True
+        for item in runtime_evidence
+    )
 
     for item in runtime_evidence:
         trace = item.data.get(
