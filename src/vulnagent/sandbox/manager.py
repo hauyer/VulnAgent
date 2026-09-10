@@ -33,6 +33,7 @@ class SandboxManager:
         self,
         command: List[str],
         work_dir: Optional[Path] = None,
+        input_data: bytes = b"",
     ) -> SandboxResult:
         """
         Execute a command through the configured sandbox backend.
@@ -67,4 +68,6 @@ class SandboxManager:
         return self.backend.execute(
             command=list(command),
             policy=self.policy,
+            work_dir=work_dir,
+            input_data=input_data,
         )

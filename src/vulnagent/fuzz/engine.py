@@ -460,8 +460,29 @@ class ControlledFuzzEngine:
             created_by="fuzz",
         )
 
-        return [
+        evidence = [
             input_evidence,
             runtime_evidence,
             result_evidence,
         ]
+        if result.crashed:
+            evidence.append(
+                Evidence(
+                    evidence_id=new_evidence_id(),
+                    task_id=request.task_id,
+                    evidence_type=EvidenceType.CRASH_LOG,
+                    source="controlled_fuzz_executor",
+                    description="Authorized local execution exited abnormally.",
+                    data={
+                        "returncode": result.returncode,
+                        "stderr": result.stderr[:2048].decode(errors="replace"),
+                        "input_sha256": input_hash,
+                        "signature": result.signature,
+                        "seed_index": seed_index,
+                        "mutation_index": mutation_index,
+                    },
+                    reliability=0.9,
+                    created_by="fuzz",
+                )
+            )
+        return evidence

@@ -86,6 +86,7 @@ class ControlledExecutor:
         sandbox_result = self.sandbox.execute(
             command=command,
             work_dir=work_dir,
+            input_data=input_data,
         )
 
         # SandboxResult 中的 stdout/stderr 为字符串。
@@ -107,11 +108,7 @@ class ControlledExecutor:
 
         # 保持原来的 Fuzz Engine Crash 判断逻辑：
         # 只有负返回码才认为是信号级 Crash。
-        crashed = (
-            returncode is not None
-            and returncode < 0
-            and not sandbox_result.timed_out
-        )
+        crashed = sandbox_result.crashed
 
         # Timeout 使用固定 signature
         if sandbox_result.timed_out:
