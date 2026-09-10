@@ -18,11 +18,18 @@ interface ApiEndpoint {
   path: string;
   descriptionEn: string;
   descriptionZh: string;
-  body?: any;
+  body?: unknown;
 }
 
 interface ApiConsoleViewProps {
   taskId: string;
+}
+
+interface ApiConsoleResponse {
+  status: number;
+  statusText: string;
+  data?: unknown;
+  error?: string;
 }
 
 export const ApiConsoleView: React.FC<ApiConsoleViewProps> = ({ taskId }) => {
@@ -31,56 +38,62 @@ export const ApiConsoleView: React.FC<ApiConsoleViewProps> = ({ taskId }) => {
   const endpoints: ApiEndpoint[] = [
     {
       method: "GET",
-      path: "/health",
+      path: "/api/health",
       descriptionEn: "Check system health and runtime environment",
       descriptionZh: "检查后端健康状态与容器运行时环境",
     },
     {
       method: "GET",
-      path: "/tasks",
+      path: "/api/tasks",
       descriptionEn: "List all active vulnerability audit tasks",
       descriptionZh: "获取当前所有漏洞审计分析任务列表",
     },
     {
       method: "GET",
-      path: `/tasks/${taskId}`,
+      path: `/api/tasks/${taskId}`,
       descriptionEn: "Fetch task details and target metadata",
       descriptionZh: "获取指定审计任务详情与目标程序元数据",
     },
     {
       method: "POST",
-      path: `/tasks/${taskId}/run`,
+      path: `/api/tasks/${taskId}/run`,
       descriptionEn: "Trigger the autonomous multi-agent pipeline",
       descriptionZh: "触发多智能体协同漏洞挖掘全流程流水线",
     },
     {
       method: "GET",
-      path: `/tasks/${taskId}/findings`,
+      path: `/api/tasks/${taskId}/findings`,
       descriptionEn: "Retrieve vulnerability candidates and confirmed findings",
       descriptionZh: "查询已挖掘的候选漏洞与已确认漏洞清单",
     },
     {
       method: "GET",
-      path: `/tasks/${taskId}/evidence`,
+      path: `/api/tasks/${taskId}/evidence`,
       descriptionEn: "Retrieve verified evidence chain artifacts",
       descriptionZh: "检索多智能体存证的证据链实体与崩溃上下文",
     },
     {
       method: "GET",
-      path: `/tasks/${taskId}/report`,
+      path: `/api/tasks/${taskId}/verifications`,
+      descriptionEn: "Retrieve independent verification verdicts",
+      descriptionZh: "查询独立漏洞复核结果",
+    },
+    {
+      method: "GET",
+      path: `/api/tasks/${taskId}/report`,
       descriptionEn: "Get executive security audit report",
       descriptionZh: "生成并获取最终安全审计评估总报告",
     },
     {
       method: "GET",
-      path: `/tasks/${taskId}/trace`,
+      path: `/api/tasks/${taskId}/trace`,
       descriptionEn: "Get full chronological domain event audit log",
       descriptionZh: "拉取全流程 AgentMessage 与领域事件审计流",
     },
   ];
 
   const [selectedEndpoint, setSelectedEndpoint] = useState<ApiEndpoint>(endpoints[0]);
-  const [response, setResponse] = useState<any>(null);
+  const [response, setResponse] = useState<ApiConsoleResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [latency, setLatency] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
@@ -108,18 +121,18 @@ export const ApiConsoleView: React.FC<ApiConsoleViewProps> = ({ taskId }) => {
         statusText: res.statusText,
         data,
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       setResponse({
         status: 500,
         statusText: "Client Fetch Error",
-        error: err.message,
+        error: err instanceof Error ? err.message : "Unknown client error",
       });
     } finally {
       setLoading(false);
     }
   };
 
-  const curlCommand = `curl -X ${selectedEndpoint.method} "http://localhost:3000${selectedEndpoint.path}" ${
+  const curlCommand = `curl -X ${selectedEndpoint.method} "http://127.0.0.1:8000${selectedEndpoint.path}" ${
     selectedEndpoint.body ? `-H "Content-Type: application/json" -d '${JSON.stringify(selectedEndpoint.body)}'` : ""
   }`;
 
@@ -140,7 +153,7 @@ export const ApiConsoleView: React.FC<ApiConsoleViewProps> = ({ taskId }) => {
             </div>
             <h2 className="text-base font-bold text-[#2b3638]">{t("apiTitle")}</h2>
             <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#eef7f6] text-[#2aa198] border border-[#bfe3e0] font-semibold">
-              OpenAPI 3.1 &bull; Port 3000
+              OpenAPI 3.1 &bull; FastAPI :8000
             </span>
           </div>
           <p className="text-xs text-[#586e75]">

@@ -203,11 +203,11 @@ export default function App() {
             </p>
             <button
               onClick={() =>
-                handleLaunchNewTask("samples/c_buffer_overflow/vuln_server.c", "source", "c")
+                handleLaunchNewTask("samples/source_demo", "source", "python")
               }
               className="px-4 py-2 rounded-xl bg-[#2aa198] hover:bg-[#238b83] text-white font-bold text-xs shadow-sm transition-colors cursor-pointer"
             >
-              {language === "zh" ? "加载演示审计任务 (C 栈溢出)" : "Seed Demo Audit Task"}
+              {language === "zh" ? "启动 V0.3 Python 源码演示" : "Start V0.3 Source Demo"}
             </button>
           </div>
         ) : (
@@ -289,9 +289,9 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px]">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-[#859900]" />
-            <span className="text-[#2b3638] font-semibold">feature/platform</span>
+            <span className="text-[#2b3638] font-semibold">feature/core-pipeline</span>
             <span>&bull;</span>
-            <span className="text-[#586e75]">VulnAgent OS v0.2.0</span>
+            <span className="text-[#586e75]">VulnAgent V0.3</span>
             <span>&bull;</span>
             <span className="text-[#859900]">🌿 工作区干净</span>
           </div>

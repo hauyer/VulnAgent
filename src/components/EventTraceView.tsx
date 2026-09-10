@@ -54,7 +54,7 @@ export const EventTraceView: React.FC<EventTraceViewProps> = ({
     const matchesSearch =
       ev.event_type.toLowerCase().includes(searchQuery.toLowerCase()) ||
       JSON.stringify(ev.payload).toLowerCase().includes(searchQuery.toLowerCase()) ||
-      ev.event_id.toLowerCase().includes(searchQuery.toLowerCase());
+      (ev.event_id ?? "").toLowerCase().includes(searchQuery.toLowerCase());
     return matchesFilter && matchesSearch;
   });
 
@@ -166,14 +166,15 @@ export const EventTraceView: React.FC<EventTraceViewProps> = ({
             </div>
           ) : (
             filteredEvents.map((ev, index) => {
-              const isExpanded = !!expandedEvents[ev.event_id];
+              const eventId = ev.event_id ?? `${ev.event_type}-${ev.timestamp}-${index}`;
+              const isExpanded = !!expandedEvents[eventId];
               return (
                 <div
-                  key={ev.event_id || index}
+                  key={eventId}
                   className="p-2.5 rounded-lg bg-[#fcf8ed] hover:bg-[#f5eed9] border border-[#dfd6bf] transition-colors"
                 >
                   <div
-                    onClick={() => toggleExpand(ev.event_id)}
+                    onClick={() => toggleExpand(eventId)}
                     className="flex items-center justify-between gap-3 cursor-pointer select-none flex-wrap"
                   >
                     <div className="flex items-center gap-2 flex-wrap">
@@ -208,7 +209,7 @@ export const EventTraceView: React.FC<EventTraceViewProps> = ({
                     </div>
 
                     <span className="text-[10px] text-[#839496] font-mono">
-                      {ev.event_id}
+                      {eventId}
                     </span>
                   </div>
 

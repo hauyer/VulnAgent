@@ -11,14 +11,18 @@ interface ReportModalProps {
 export const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, report }) => {
   if (!isOpen || !report) return null;
 
-  const content = report.content || {};
-  const metrics = content.metrics || {
-    total_candidates: 0,
-    confirmed_vulnerabilities: 0,
-    rejected_false_positives: 0,
-    uncertain_findings: 0,
-    evidence_count: 0,
+  const content = report.content;
+  const metrics = {
+    total_candidates: content.risk_summary.counts.total,
+    confirmed_vulnerabilities: content.risk_summary.counts.confirmed,
+    rejected_false_positives: content.risk_summary.counts.rejected,
+    uncertain_findings: content.risk_summary.counts.pending,
+    evidence_count: content.summary.evidence_count,
   };
+  const findings = content.findings.map((item) => item.finding);
+  const recommendations = Array.from(
+    new Set(content.findings.flatMap((item) => item.remediation.guidance)),
+  );
 
   const handleDownload = () => {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(report, null, 2));
@@ -76,7 +80,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, repor
               Executive Summary
             </h4>
             <p className="text-xs text-slate-300 leading-relaxed">
-              {content.executive_summary || content.summary || "Security audit completed successfully."}
+              {content.risk_summary.headline || "Security audit completed successfully."}
             </p>
           </div>
 
@@ -105,13 +109,13 @@ export const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, repor
           </div>
 
           {/* Detailed Findings List */}
-          {content.findings && content.findings.length > 0 && (
+          {findings.length > 0 && (
             <div>
               <h4 className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-3">
                 Assessed Vulnerabilities
               </h4>
               <div className="space-y-3">
-                {content.findings.map((f: any, idx: number) => (
+                {findings.map((f, idx: number) => (
                   <div
                     key={f.vulnerability_id || idx}
                     className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-2"
@@ -154,14 +158,14 @@ export const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, repor
           )}
 
           {/* Remediation Recommendations */}
-          {content.recommendations && content.recommendations.length > 0 && (
+          {recommendations.length > 0 && (
             <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800">
               <h4 className="text-xs font-semibold text-amber-400 uppercase tracking-wider mb-3 flex items-center gap-2">
                 <Lightbulb className="w-4 h-4" />
                 Remediation Recommendations
               </h4>
               <ul className="space-y-2 text-xs text-slate-300">
-                {content.recommendations.map((rec: string, i: number) => (
+                {recommendations.map((rec: string, i: number) => (
                   <li key={i} className="flex items-start gap-2">
                     <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 mt-1.5 shrink-0" />
                     <span>{rec}</span>

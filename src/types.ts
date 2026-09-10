@@ -98,34 +98,57 @@ export interface Evidence {
 }
 
 export interface DomainEvent {
-  event_id: string;
+  event_id?: string;
   task_id: string;
   event_type: string;
+  producer: string;
   payload: Record<string, any>;
   timestamp: string;
+}
+
+export interface VerificationResult {
+  vulnerability_id: string;
+  task_id: string;
+  status: VulnerabilityStatus;
+  confidence: number;
+  rationale: string;
+  evidence_ids: string[];
+  metadata: Record<string, unknown>;
+}
+
+export interface StructuredReportFinding {
+  finding: VulnerabilityCandidate;
+  verification: VerificationResult | null;
+  evidence: Evidence[];
+  remediation: {
+    guidance: string[];
+    disclaimer: string;
+  };
 }
 
 export interface ReportResult {
   task_id: string;
   content: {
-    summary?: string;
-    executive_summary?: string;
-    target_info?: Record<string, any>;
-    metrics?: {
-      total_candidates: number;
-      confirmed_vulnerabilities: number;
-      rejected_false_positives: number;
-      uncertain_findings: number;
+    task: Task;
+    summary: {
+      finding_count: number;
       evidence_count: number;
+      verification_count: number;
+      findings_by_status: Record<VulnerabilityStatus, number>;
+      findings_by_severity: Record<string, number>;
     };
-    severity_breakdown?: {
-      critical: number;
-      high: number;
-      medium: number;
-      low: number;
+    findings: StructuredReportFinding[];
+    verifications: VerificationResult[];
+    evidence_timeline: Array<Record<string, unknown>>;
+    risk_summary: {
+      headline: string;
+      counts: {
+        total: number;
+        confirmed: number;
+        rejected: number;
+        pending: number;
+      };
     };
-    findings?: VulnerabilityCandidate[];
-    recommendations?: string[];
   };
   artifact_uri?: string | null;
   metadata?: Record<string, any>;

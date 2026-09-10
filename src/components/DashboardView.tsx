@@ -67,10 +67,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const benchmarks = [
     {
       title: language === "zh" ? "C 语言网络守护程序栈缓冲区溢出" : "C Daemon Stack Buffer Overflow",
-      path: "samples/c_buffer_overflow/vuln_server.c",
+      path: "samples/source_demo",
       type: "source" as const,
-      language: "c",
-      cwe: "CWE-120",
+      language: "python",
+      cwe: "CWE-78 / CWE-89",
       description:
         language === "zh"
           ? "经典远程网络守护程序，在 handle_client_request() 中对定长栈缓冲区调用无边界检查的 strcpy()。"
@@ -79,7 +79,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     },
     {
       title: language === "zh" ? "Python Web SQL 注入危险汇聚点" : "Python Web SQL Injection Sink",
-      path: "samples/python_sqli/app_sink.py",
+      path: "samples/source_demo/vulnerable.py",
       type: "source" as const,
       language: "python",
       cwe: "CWE-89",
@@ -133,7 +133,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="flex items-center gap-2 flex-wrap">
               <span className="px-2.5 py-1 rounded-full text-xs font-mono font-bold bg-[#e6deca] text-[#2aa198] border border-[#d2c8af] flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-[#2aa198] animate-ping" />
-                VULNAGENT RUNTIME v0.2.0
+                VULNAGENT RUNTIME v0.3.0
               </span>
               <span className="px-2.5 py-1 rounded-full text-xs font-mono bg-[#eee8d5] text-[#586e75] border border-[#dfd6bf]">
                 {language === "zh" ? "目标类型" : "Target"}: {task.target.target_type.toUpperCase()}
