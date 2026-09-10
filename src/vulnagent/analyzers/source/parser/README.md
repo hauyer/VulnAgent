@@ -31,7 +31,7 @@
 
 `PythonSourceParser` 是单语言（Python）解析器，保留为兼容入口；其内部按文件解析逻辑已抽为 `python_parser.parse_python_file`，供项目级解析器复用。二者对同一 Python 项目产出**一致的** `call_graph` 语义与 import 元数据。
 
-`MockSourceParser` 继续保留，现有集成链路可在 composition root 明确切换后再采用真实解析器。
+`MockSourceParser` 继续保留；`v03-source` Profile 已在 composition root 显式接入真实解析器。
 
 ## 语言约定
 

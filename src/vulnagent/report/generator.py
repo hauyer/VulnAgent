@@ -44,7 +44,21 @@ class StructuredReportGenerator:
 
     async def generate(self, request: ReportRequest) -> ReportResult:
         content = _build_content(request)
-        return ReportResult(task_id=request.task.task_id, content=content, artifact_uri=f"memory://reports/{request.task.task_id}", metadata={"generator": "structured", "version": "v0.2", "mock": True})
+        input_mode = (
+            "mock"
+            if request.findings and all(item.metadata.get("mock") for item in request.findings)
+            else "real"
+        )
+        return ReportResult(
+            task_id=request.task.task_id,
+            content=content,
+            artifact_uri=f"memory://reports/{request.task.task_id}",
+            metadata={
+                "generator": "structured",
+                "version": "v0.3",
+                "input_mode": input_mode,
+            },
+        )
 
 
 # Backward-compatible alias: V0.1-era callers and in-repo tests import the
@@ -112,7 +126,9 @@ def _build_content(request: ReportRequest) -> dict[str, Any]:
         "evidence": [item.model_dump(mode="json") for item in request.evidence],
         "verifications": [item.model_dump(mode="json") for item in request.verifications],
         "evidence_graph": build_evidence_graph(request.findings, request.evidence, request.verifications),
-        "mock": True,
+        "mock": bool(request.findings) and all(
+            item.metadata.get("mock") for item in request.findings
+        ),
         "limitations": {
             "missing_evidence_ids": sorted(missing_evidence_ids),
             "unverified_finding_ids": sorted(

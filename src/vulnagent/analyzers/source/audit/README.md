@@ -37,5 +37,5 @@ pytest tests/contracts tests/architecture
 
 - 当前只分析 Python，污点传播限于单个函数，不能替代工业级跨过程污点分析。
 - 动态派发、反射、复杂容器别名和自定义净化器可能无法准确识别。
-- 默认应用仍由 Composition Root 注入 Mock 能力；真实 Parser/Auditor 可通过 `CapabilityBundle` 注入。
-- 现有 `SourceAuditAgent` 会把统一消息和 Evidence metadata 固定标记为 `mock: true`。该文件属于 P1 范围，本次 P3 交付不跨 Owner 修改；候选自身的 `producer` 与 `analysis_engine` 可用于识别真实审计结果。
+- `mock` Profile 继续注入 Mock 能力；`v03-source` Profile 通过 `CapabilityBundle` 注入真实 Parser/Auditor。
+- `SourceAuditAgent` 根据能力输出区分 Mock 与真实结果，并把 location、snippet、taint path 和 rule metadata 转换为统一 Evidence。

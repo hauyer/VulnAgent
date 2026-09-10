@@ -1,7 +1,9 @@
 """Task lifecycle endpoints."""
 
 from fastapi import APIRouter, HTTPException, Request, status
-from pydantic import BaseModel
+from typing import Any
+
+from pydantic import BaseModel, Field
 
 from vulnagent.contracts import DomainEvent, Target, TargetType, Task
 from vulnagent.utils.ids import new_target_id
@@ -12,11 +14,23 @@ router = APIRouter(prefix="/tasks", tags=["tasks"])
 class CreateTaskRequest(BaseModel):
     target_path: str
     target_type: TargetType
+    language: str | None = None
+    file_format: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 @router.post("", response_model=Task, status_code=status.HTTP_201_CREATED)
 async def create_task(payload: CreateTaskRequest, request: Request) -> Task:
-    target = Target(target_id=new_target_id(), path=payload.target_path, target_type=payload.target_type)
+    if not payload.target_path.strip():
+        raise HTTPException(status_code=400, detail="target_path must not be empty")
+    target = Target(
+        target_id=new_target_id(),
+        path=payload.target_path,
+        target_type=payload.target_type,
+        language=payload.language,
+        file_format=payload.file_format,
+        metadata=payload.metadata,
+    )
     return request.app.state.task_manager.create_task(target)
 
 
@@ -37,7 +51,14 @@ async def get_task(task_id: str, request: Request) -> Task:
 async def run_task(task_id: str, request: Request) -> Task:
     if request.app.state.task_manager.get_task(task_id) is None:
         raise HTTPException(status_code=404, detail="Task not found")
-    await request.app.state.orchestrator.run(task_id)
+    try:
+        await request.app.state.orchestrator.run(task_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="Task execution failed") from exc
     task = request.app.state.task_manager.get_task(task_id)
     assert task is not None
     return task
