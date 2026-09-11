@@ -19,3 +19,18 @@
 修复建议由 Report 内部小型 CWE/类型中文知识表与泛化兜底生成，仅作需人工复核的通用指引，绝不把文本当作权威确认（每项附 `disclaimer`）。本模块不修改任何公共 Contract。
 
 测试入口：`pytest tests/contracts tests/evidence tests/report`（目录存在时）。
+
+## 离线导出
+
+`html.py` 与 `pdf.py` 只是 `ReportResult.content` 的展示投影，不读取 Analyzer/Fuzzer 内部对象，也不创建第二套 Finding 或 Evidence Schema：
+
+- HTML 为单文件离线页面，所有动态文本做 HTML 转义，并设置禁止脚本和外部资源的 CSP；
+- PDF 使用可选 `report-export` 依赖，以中文 CID 字体生成可打印分页报告；
+- 两者均包含任务/风险摘要、Finding、Verification、修复建议、关联 Evidence、Evidence 时间线和完整性限制；
+- 写入采用同目录临时文件替换，失败时不留下半份正式产物。
+
+```powershell
+python -m pip install -e ".[report-export]"
+python scripts\export_report_html.py --input artifacts\demos\v04\source.json --output artifacts\demos\v04\source.html
+python scripts\export_report_pdf.py --input artifacts\demos\v04\source.json --output artifacts\demos\v04\source.pdf
+```

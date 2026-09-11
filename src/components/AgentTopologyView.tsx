@@ -104,11 +104,11 @@ export const AgentTopologyView: React.FC<AgentTopologyViewProps> = ({
       status: "completed",
       description:
         language === "zh"
-          ? "结合静态危险点生成定向种子语料，驱动 AFL++ / libFuzzer 高速变异执行，捕获 SIGSEGV 崩溃与 AddressSanitizer 诊断日志。"
-          : "Runs targeted fuzz tests with AFL++ & libFuzzer seeds. Captures SIGSEGV crash logs and AddressSanitizer dumps.",
-      inputContract: ["CorpusSeeds", "SanitizerConfig"],
-      outputContract: ["Evidence(crash_log)", "Evidence(sanitizer_output)"],
-      evidenceTypesProduced: ["fuzz_input", "crash_log", "sanitizer_output"],
+          ? "根据静态危险点生成确定性引导输入，在固定预算和本地授权边界内执行受控变异，记录运行轨迹与去重崩溃指纹。"
+          : "Generates deterministic guidance from static risks and performs fixed-budget controlled mutations with runtime traces and deduplicated crash fingerprints.",
+      inputContract: ["SeedCorpus", "RiskHints", "SandboxPolicy"],
+      outputContract: ["Evidence(runtime_trace)", "Evidence(crash_log)"],
+      evidenceTypesProduced: ["fuzz_input", "runtime_trace", "crash_log", "tool_result"],
     },
     {
       id: "verification_agent",
@@ -188,11 +188,17 @@ export const AgentTopologyView: React.FC<AgentTopologyViewProps> = ({
           </div>
           <button
             onClick={onTriggerRun}
-            disabled={isRunning}
-            className="px-4 py-2 rounded-lg bg-[#2aa198] hover:bg-[#238b83] text-white font-semibold text-xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-xs"
+            disabled={isRunning || task.status !== "created"}
+            className="px-4 py-2 rounded-lg bg-[#2aa198] hover:bg-[#238b83] text-white font-semibold text-xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-xs"
           >
             <Zap className="w-3.5 h-3.5 fill-current" />
-            <span>{isRunning ? (language === "zh" ? "执行中..." : "Executing...") : (language === "zh" ? "触发 DAG 协同" : "Trigger DAG Pipeline")}</span>
+            <span>
+              {isRunning
+                ? (language === "zh" ? "执行中..." : "Executing...")
+                : task.status !== "created"
+                  ? (language === "zh" ? "本次协同已完成" : "DAG Run Complete")
+                  : (language === "zh" ? "触发 DAG 协同" : "Trigger DAG Pipeline")}
+            </span>
           </button>
         </div>
       </div>
@@ -237,7 +243,7 @@ export const AgentTopologyView: React.FC<AgentTopologyViewProps> = ({
                   <span>Supervisor / Orchestrator</span>
                 </div>
                 <div className="text-[10px] text-[#586e75] mt-1 font-mono">
-                  {language === "zh" ? "有界路由 &bull; 最大 10 步限制" : "Bounded Router &bull; Max 10 Steps"}
+                  {language === "zh" ? "有界路由 • 最大 10 步限制" : "Bounded Router • Max 10 Steps"}
                 </div>
               </button>
             </div>
@@ -303,7 +309,7 @@ export const AgentTopologyView: React.FC<AgentTopologyViewProps> = ({
                   <span>Source Audit Agent</span>
                 </div>
                 <div className="text-[10px] text-[#586e75] mt-1 font-mono">
-                  {language === "zh" ? "AST &bull; 污点分析 &bull; 危险 API" : "AST &bull; Taint Analysis &bull; Dangerous APIs"}
+                  {language === "zh" ? "AST • 污点分析 • 危险 API" : "AST • Taint Analysis • Dangerous APIs"}
                 </div>
               </button>
 
@@ -328,7 +334,7 @@ export const AgentTopologyView: React.FC<AgentTopologyViewProps> = ({
                   <span>Binary Analysis Agent</span>
                 </div>
                 <div className="text-[10px] text-[#586e75] mt-1 font-mono">
-                  {language === "zh" ? "反汇编 &bull; CFG &bull; 符号提取" : "Disassembly &bull; CFG &bull; Strings"}
+                  {language === "zh" ? "反汇编 • CFG • 符号提取" : "Disassembly • CFG • Strings"}
                 </div>
               </button>
             </div>
@@ -353,7 +359,7 @@ export const AgentTopologyView: React.FC<AgentTopologyViewProps> = ({
                     {language === "zh" ? "动态变异测试" : "Dynamic Engine"}
                   </span>
                   <span className="px-1.5 py-0.2 rounded text-[9px] font-mono bg-[#fce8e6] text-[#dc322f] border border-[#f5b8b5]">
-                    AFL++ / ASAN
+                    HYBRID / FIXED BUDGET
                   </span>
                 </div>
                 <div className="text-xs font-bold text-[#2b3638] flex items-center gap-2">
@@ -361,7 +367,7 @@ export const AgentTopologyView: React.FC<AgentTopologyViewProps> = ({
                   <span>Fuzz Agent</span>
                 </div>
                 <div className="text-[10px] text-[#586e75] mt-1 font-mono">
-                  {language === "zh" ? "种子变异 &bull; 崩溃捕获 &bull; 覆盖率" : "Seed Mutation &bull; Crash Capture &bull; Trace"}
+                  {language === "zh" ? "种子变异 • 崩溃捕获 • 覆盖率" : "Seed Mutation • Crash Capture • Trace"}
                 </div>
               </button>
             </div>
@@ -392,7 +398,7 @@ export const AgentTopologyView: React.FC<AgentTopologyViewProps> = ({
                   <span>Verification Agent</span>
                 </div>
                 <div className="text-[10px] text-[#586e75] mt-1 font-mono">
-                  {language === "zh" ? "独立解耦复核 &bull; 签署 CONFIRMED" : "Decoupled Verifier &bull; Writes CONFIRMED"}
+                  {language === "zh" ? "独立解耦复核 • 签署 CONFIRMED" : "Decoupled Verifier • Writes CONFIRMED"}
                 </div>
               </button>
 
@@ -417,7 +423,7 @@ export const AgentTopologyView: React.FC<AgentTopologyViewProps> = ({
                   <span>Reviewer Agent</span>
                 </div>
                 <div className="text-[10px] text-[#586e75] mt-1 font-mono">
-                  {language === "zh" ? "消解 UNCERTAIN &bull; 结果融合" : "Resolves UNCERTAIN &bull; Deduplication"}
+                  {language === "zh" ? "消解 UNCERTAIN • 结果融合" : "Resolves UNCERTAIN • Deduplication"}
                 </div>
               </button>
             </div>
@@ -448,7 +454,7 @@ export const AgentTopologyView: React.FC<AgentTopologyViewProps> = ({
                   <span>Report Agent</span>
                 </div>
                 <div className="text-[10px] text-[#586e75] mt-1 font-mono">
-                  {language === "zh" ? "审计报告生成 &bull; 修复路线图" : "Audit Intelligence &bull; Remediation Plan"}
+                  {language === "zh" ? "审计报告生成 • 修复路线图" : "Audit Intelligence • Remediation Plan"}
                 </div>
               </button>
             </div>

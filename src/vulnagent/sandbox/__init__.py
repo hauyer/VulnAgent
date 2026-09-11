@@ -5,6 +5,7 @@ from .result import SandboxResult
 from .backends import (
     SandboxBackend,
     SubprocessBackend,
+    WindowsJobBackend,
 )
 
 __all__ = [
@@ -13,4 +14,5 @@ __all__ = [
     "SandboxResult",
     "SandboxBackend",
     "SubprocessBackend",
+    "WindowsJobBackend",
 ]

@@ -27,6 +27,7 @@ class FuzzAgent(BaseAgent):
 
     async def run(self, task: Task, context: AnalysisContext) -> AgentResult:
         authorized = bool(task.target.metadata.get("fuzz_authorized", False))
+        risk_hints, source_finding_ids = self._risk_guidance(context)
         result = await self.engine.run(
             FuzzRequest(
                 task_id=task.task_id,
@@ -35,6 +36,8 @@ class FuzzAgent(BaseAgent):
                 authorized=authorized,
                 metadata={
                     "seed_dir": task.target.metadata.get("seed_dir"),
+                    "risk_hints": risk_hints,
+                    "guidance_source_finding_ids": source_finding_ids,
                 },
             )
         )
@@ -94,6 +97,14 @@ class FuzzAgent(BaseAgent):
                         "mock": False,
                         "authorized": True,
                         "executions": result.metadata.get("executions", 0),
+                        "mutation_strategy": result.metadata.get(
+                            "mutation_strategy",
+                            "generic",
+                        ),
+                        "guidance_risk_types": result.metadata.get(
+                            "guidance_risk_types",
+                            [],
+                        ),
                     },
                 )
             )
@@ -113,3 +124,35 @@ class FuzzAgent(BaseAgent):
             findings=findings,
             evidence=evidence,
         )
+
+    @staticmethod
+    def _risk_guidance(
+        context: AnalysisContext,
+    ) -> tuple[list[dict[str, object]], list[str]]:
+        """Normalize prior candidates into bounded provider-neutral fuzz hints."""
+        hints: list[dict[str, object]] = []
+        finding_ids: list[str] = []
+        seen: set[tuple[str, str | None, str | None]] = set()
+        for finding in context.findings:
+            if finding.source_agent == "fuzz":
+                continue
+            key = (
+                finding.vulnerability_type,
+                finding.cwe_id,
+                str(finding.metadata.get("sink") or "") or None,
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            hints.append(
+                {
+                    "vulnerability_type": key[0],
+                    "cwe_id": key[1],
+                    "sink": key[2],
+                    "confidence": finding.confidence,
+                }
+            )
+            finding_ids.append(finding.vulnerability_id)
+            if len(hints) >= 16:
+                break
+        return hints, finding_ids

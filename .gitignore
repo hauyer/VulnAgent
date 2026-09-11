@@ -4,6 +4,10 @@ dist/
 .venv/
 __pycache__/
 .pytest_cache/
+.pytest-tmp/
+.pytest-*/
+.playwright-cli/
+.tmp/
 *.pyc
 *.egg-info/
 dist/
@@ -11,16 +15,28 @@ build/
 
 .pip-tmp/
 tools/
+benchmarks/packed/materials/*
+!benchmarks/packed/materials/README.md
+benchmarks/obfuscated/materials/*
+!benchmarks/obfuscated/materials/README.md
 
 artifacts/logs/*
 !artifacts/logs/.gitkeep
 artifacts/crashes/*
 !artifacts/crashes/.gitkeep
 artifacts/*.html
+artifacts/binary_demo/
+output/
 
 
 # Fuzz runtime artifacts
 artifacts/fuzz/
+artifacts/uploads/
+artifacts/experiments/
+artifacts/demos/
+artifacts/*.db
+artifacts/*.db-shm
+artifacts/*.db-wal
 
 
 # scratch comparison copy

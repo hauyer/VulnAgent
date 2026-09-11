@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0",
+  "suite_id": "vulnagent-fuzz-guidance-mvp",
+  "description": "Self-authored, local-only controlled target for fixed-budget guided-fuzz ablation.",
+  "samples": [
+    {
+      "sample_id": "py-fuzz-guidance-001",
+      "path": "samples/fuzz_demo/target.py",
+      "source": "VulnAgent self-authored teaching fixture",
+      "license": "Project educational use",
+      "language": "python",
+      "target_type": "source",
+      "ground_truth": "vulnerable",
+      "cwe": ["CWE-95"],
+      "expected_findings": ["dynamic_code_execution", "fuzz_crash"],
+      "authorization": "local self-authored fixture; controlled execution explicitly allowed",
+      "run_command": "python -m experiments.run_fuzz_ablation --manifest benchmarks/fuzz/manifest.json --output-dir artifacts/experiments/fuzz-ablation"
+    }
+  ]
+}

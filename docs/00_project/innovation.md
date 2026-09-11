@@ -177,7 +177,7 @@ LLM Analysis
 
 传统 Fuzz 很大程度依赖随机或覆盖率反馈。
 
-VulnAgent 计划引入语义信息辅助：
+VulnAgent 已实现由结构化 Source/Binary Candidate 派生的风险引导信息，用于：
 
 - 攻击面选择
 - 目标函数选择
@@ -186,7 +186,7 @@ VulnAgent 计划引入语义信息辅助：
 - Crash 分析
 - 优先级调整
 
-未来实验可以比较：
+当前固定预算实验可以比较：
 
 **Traditional Fuzz**
 
@@ -201,11 +201,13 @@ VulnAgent 计划引入语义信息辅助：
 - 漏洞发现速度
 - 有效输入比例
 
+引导字典仅使用项目标记和解析器边界字符，不自动生成命令、SQL 或 Exploit。Fuzz Evidence 会同时记录来源 Finding ID、风险类型和具体变异策略，使 Static→Dynamic 关系可追踪。
+
 ## 8. 创新点七：异构 LLM 可替换与横向比较
 
 VulnAgent 不绑定单一模型。
 
-所有模型通过统一 LLM Adapter 使用。
+所有模型通过统一 LLM Adapter 使用。当前已实现 DeepSeek、智谱 GLM 与 Kimi K2.6 的非流式 Chat Completions Adapter，并由配置注入 Planner；无 Key 时使用 Mock 或明确失败。统一 `generate_with_usage` 在保持 `generate -> str` 兼容的同时记录供应商返回 Token、缓存命中、延迟和版本化费率估算。
 
 因此可以研究：
 
@@ -225,6 +227,8 @@ Kimi
 - Token 成本
 - 响应时间
 - 不同代码长度表现
+
+2026-09-11 已在同一 20 样本 manifest 上完成三家模型各 20 次真实调用，并与 Evidence-First Full 同批比较。三家分类 F1 均为 1.0，但 LLM-only Evidence Coverage 为 0、Full 为 1.0；因此该创新的可验证价值是“异构替换、成本/延迟可测、证据闭环可对照”，不是宣称在小型教学集上拥有虚假的精度领先。
 
 ## 9. 创新验证原则
 

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 from typing import List, Optional
 
-from .backends import SandboxBackend, SubprocessBackend
+from .backends import SandboxBackend, SubprocessBackend, WindowsJobBackend
 from .policy import SandboxPolicy
 from .result import SandboxResult
 
@@ -27,7 +28,9 @@ class SandboxManager:
         backend: Optional[SandboxBackend] = None,
     ) -> None:
         self.policy = policy or SandboxPolicy()
-        self.backend = backend or SubprocessBackend()
+        self.backend = backend or (
+            WindowsJobBackend() if os.name == "nt" else SubprocessBackend()
+        )
 
     def execute(
         self,

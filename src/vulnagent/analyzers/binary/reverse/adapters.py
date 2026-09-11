@@ -278,6 +278,22 @@ class Radare2Adapter(_SafeToolAdapter):
         except (TypeError, ValueError, json.JSONDecodeError) as exc:
             return _with_facts(_replace_run(functions_run, status="invalid_output", error=f"invalid radare2 aflj JSON: {exc}"), {"input": _file_fingerprint(input_path), "operation": "aflj"})
 
+        # Managed or fully packed images may legitimately expose no native
+        # functions to radare2. In that case agfj can emit an empty stream; a
+        # valid aflj=[] result is still a successful bounded inspection.
+        if not functions:
+            facts = {
+                "input": _file_fingerprint(input_path),
+                "functions": [],
+                "cfg": {},
+                "pseudocode": {},
+                "pseudocode_failures": [],
+                "source": "radare2",
+            }
+            if tool_versions:
+                facts["tool_version"] = self._run([resolved, "-v"]).as_dict()
+            return _with_facts(functions_run, facts)
+
         graphs_run = self._run([resolved, "-q", "-c", "aa;agfj", str(input_path)])
         if graphs_run.status != "ok":
             return _with_facts(graphs_run, {"input": _file_fingerprint(input_path), "operation": "agfj", "functions": functions})
@@ -349,9 +365,11 @@ def parse_radare2_functions(output: str, max_functions: int = 10_000) -> list[di
     raw = _json_array(output)
     functions: list[dict[str, Any]] = []
     for row in raw[:max_functions]:
-        if not isinstance(row, dict) or not _is_int(row.get("offset")) or row["offset"] < 0:
+        if not isinstance(row, dict):
             continue
-        address = row["offset"]
+        address = _radare_address(row)
+        if address is None:
+            continue
         functions.append({
             "name": str(row.get("name", f"fcn.{address:x}"))[:256],
             "address": address,
@@ -372,9 +390,12 @@ def parse_radare2_graphs(output: str, max_functions: int = 10_000) -> dict[str, 
         if not isinstance(blocks, list):
             continue
         for block in blocks[:max_functions]:
-            if not isinstance(block, dict) or not _is_int(block.get("offset")):
+            if not isinstance(block, dict):
                 continue
-            source = f"0x{block['offset']:x}"
+            address = _radare_address(block)
+            if address is None:
+                continue
+            source = f"0x{address:x}"
             successors = [f"0x{target:x}" for target in (block.get("jump"), block.get("fail")) if _is_int(target)]
             cfg[source] = list(dict.fromkeys(successors))
     return cfg
@@ -416,6 +437,15 @@ def _file_fingerprint(path: Path) -> dict[str, Any]:
 
 def _is_int(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _radare_address(row: dict[str, Any]) -> int | None:
+    """Accept the ``offset`` and radare2 6.x ``addr`` JSON spellings."""
+
+    value = row.get("offset")
+    if not _is_int(value):
+        value = row.get("addr")
+    return value if _is_int(value) and value >= 0 else None
 
 
 def _nonnegative_int(value: object) -> int:

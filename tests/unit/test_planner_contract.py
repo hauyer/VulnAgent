@@ -35,7 +35,7 @@ def make_task(
         (
             TargetType.BINARY,
             "binary_analysis",
-            {"binary.inspect"},
+            {"binary.inspect", "binary.logic", "binary.obfuscation"},
         ),
     ],
 )

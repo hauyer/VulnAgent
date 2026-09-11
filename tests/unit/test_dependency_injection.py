@@ -113,6 +113,11 @@ class FakeBinaryAnalyzer:
         )
 
 
+class FakeBinaryFeatureAnalyzer:
+    async def inspect(self, result: BinaryAnalysisResult) -> dict[str, object]:
+        return {"target_id": result.target_id, "fake": True}
+
+
 class FakeFuzzEngine:
     async def run(self, request: FuzzRequest) -> FuzzResult:
         return FuzzResult(
@@ -166,6 +171,8 @@ def test_mock_application_registers_expected_capabilities() -> None:
         CapabilityName.SOURCE_PARSE.value,
         CapabilityName.SOURCE_AUDIT.value,
         CapabilityName.BINARY_INSPECT.value,
+        CapabilityName.BINARY_LOGIC.value,
+        CapabilityName.BINARY_OBFUSCATION.value,
         CapabilityName.FUZZ_EXECUTE.value,
         CapabilityName.VERIFICATION_VERIFY.value,
         CapabilityName.REPORT_GENERATE.value,
@@ -446,6 +453,8 @@ def test_all_capabilities_are_replaceable_at_composition_root() -> None:
     parser = FakeSourceParser()
     auditor = FakeSourceAuditor()
     binary = FakeBinaryAnalyzer()
+    logic = FakeBinaryFeatureAnalyzer()
+    obfuscation = FakeBinaryFeatureAnalyzer()
     fuzz = FakeFuzzEngine()
     verifier = FakeVerifier()
     report = FakeReportGenerator()
@@ -453,6 +462,8 @@ def test_all_capabilities_are_replaceable_at_composition_root() -> None:
         source_parser=parser,
         source_auditor=auditor,
         binary_analyzer=binary,
+        binary_logic_analyzer=logic,
+        binary_obfuscation_analyzer=obfuscation,
         fuzz_engine=fuzz,
         verifier=verifier,
         report_generator=report,
@@ -464,6 +475,8 @@ def test_all_capabilities_are_replaceable_at_composition_root() -> None:
         CapabilityName.SOURCE_PARSE.value: parser,
         CapabilityName.SOURCE_AUDIT.value: auditor,
         CapabilityName.BINARY_INSPECT.value: binary,
+        CapabilityName.BINARY_LOGIC.value: logic,
+        CapabilityName.BINARY_OBFUSCATION.value: obfuscation,
         CapabilityName.FUZZ_EXECUTE.value: fuzz,
         CapabilityName.VERIFICATION_VERIFY.value: verifier,
         CapabilityName.REPORT_GENERATE.value: report,
@@ -489,5 +502,4 @@ def test_missing_runtime_agent_fails_during_composition() -> None:
 
     with pytest.raises(ValueError, match="Missing runtime agents"):
         build_application(capabilities, agent_registry=registry)
-
 

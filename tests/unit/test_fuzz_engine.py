@@ -97,3 +97,60 @@ async def test_fuzz_engine_runs_authorized_target(
     assert result.executed is True
     assert result.metadata["executions"] == 4
     assert len(result.evidence) > 0
+
+
+@pytest.mark.asyncio
+async def test_risk_guidance_reaches_instrumented_boundary_with_same_budget(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "guided_target.py"
+    target.write_text(
+        "import sys\n"
+        "data = sys.stdin.buffer.read()\n"
+        "raise SystemExit(9 if data == b'VULNAGENT_CODE_MARKER' else 0)\n",
+        encoding="utf-8",
+    )
+    seed_dir = tmp_path / "seeds"
+    seed_dir.mkdir()
+    (seed_dir / "seed").write_bytes(b"ordinary")
+    engine = ControlledFuzzEngine(mutation_count=1, seed=7)
+
+    generic = await engine.run(
+        FuzzRequest(
+            task_id="generic-task",
+            target_id="guided-target",
+            target_path=str(target),
+            authorized=True,
+            metadata={"seed_dir": str(seed_dir)},
+        )
+    )
+    guided = await engine.run(
+        FuzzRequest(
+            task_id="guided-task",
+            target_id="guided-target",
+            target_path=str(target),
+            authorized=True,
+            metadata={
+                "seed_dir": str(seed_dir),
+                "risk_hints": [
+                    {
+                        "vulnerability_type": "dynamic_code_execution",
+                        "cwe_id": "CWE-95",
+                    }
+                ],
+                "guidance_source_finding_ids": ["finding-static-1"],
+            },
+        )
+    )
+
+    assert generic.crashes == 0
+    assert guided.crashes == 1
+    assert generic.metadata["attempts"] == guided.metadata["attempts"] == 1
+    assert guided.metadata["mutation_strategy"] == "hybrid_risk_guided"
+    assert guided.metadata["guided_mutations"] == 1
+    assert guided.metadata["guidance_risk_types"] == ["dynamic_code_execution"]
+    assert any(
+        item.source == "risk_guided_mutation_planner"
+        and item.data["source_finding_ids"] == ["finding-static-1"]
+        for item in guided.evidence
+    )

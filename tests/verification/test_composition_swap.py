@@ -10,6 +10,8 @@ composition caller chooses it; P1 does not need a code change for P7 to run.
 """
 
 from vulnagent.analyzers.binary.reverse import MockBinaryReverseAnalyzer
+from vulnagent.analyzers.binary.logic import MockLogicAnalyzer
+from vulnagent.analyzers.binary.obfuscation import MockObfuscationAnalyzer
 from vulnagent.analyzers.source.audit import MockSourceAuditor
 from vulnagent.analyzers.source.parser import MockSourceParser
 from vulnagent.bootstrap import build_application
@@ -26,6 +28,8 @@ async def test_evidence_verifier_runs_through_public_composition_root() -> None:
             source_parser=MockSourceParser(),
             source_auditor=MockSourceAuditor(),
             binary_analyzer=MockBinaryReverseAnalyzer(),
+            binary_logic_analyzer=MockLogicAnalyzer(),
+            binary_obfuscation_analyzer=MockObfuscationAnalyzer(),
             fuzz_engine=MockFuzzEngine(),
             verifier=EvidenceVerifier(),
             report_generator=MockReportGenerator(),

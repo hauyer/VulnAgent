@@ -8,15 +8,11 @@ from vulnagent.fuzz.engine import ControlledFuzzEngine
 async def main() -> None:
     print("Starting local fuzz test...")
 
-    target = (
-        Path("tests")
-        / "fixtures"
-        / "fuzz_target.py"
-    ).resolve()
+    target = (Path("samples") / "fuzz_demo" / "target.py").resolve()
 
     seed_dir = (
-        Path("artifacts")
-        / "fuzz"
+        Path("samples")
+        / "fuzz_demo"
         / "seeds"
     ).resolve()
 

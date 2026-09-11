@@ -30,6 +30,16 @@ export interface Task {
   metadata?: Record<string, any>;
 }
 
+export interface UploadResult {
+  original_name: string;
+  stored_path: string;
+  target_type: "source" | "binary";
+  language?: string | null;
+  file_format?: string | null;
+  size_bytes: number;
+  sha256: string;
+}
+
 export type VulnerabilityStatus =
   | "candidate"
   | "verifying"

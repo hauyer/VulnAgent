@@ -13,6 +13,7 @@ from typing import Any
 
 from vulnagent.contracts import (
     BinaryAnalyzer,
+    BinaryFeatureAnalyzer,
     FuzzEngine,
     ReportGenerator,
     SourceAuditor,
@@ -39,6 +40,8 @@ class CapabilityBundle:
     source_auditor: SourceAuditor
 
     binary_analyzer: BinaryAnalyzer
+    binary_logic_analyzer: BinaryFeatureAnalyzer
+    binary_obfuscation_analyzer: BinaryFeatureAnalyzer
 
     fuzz_engine: FuzzEngine
 
@@ -75,6 +78,18 @@ class CapabilityBundle:
             self.binary_analyzer,
             "analyze",
             "binary_analyzer",
+        )
+
+        self._require_async_callable(
+            self.binary_logic_analyzer,
+            "inspect",
+            "binary_logic_analyzer",
+        )
+
+        self._require_async_callable(
+            self.binary_obfuscation_analyzer,
+            "inspect",
+            "binary_obfuscation_analyzer",
         )
 
         self._require_async_callable(

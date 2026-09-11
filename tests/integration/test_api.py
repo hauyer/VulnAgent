@@ -29,3 +29,4 @@ def test_health_and_task_workflow() -> None:
         report = client.get(f"/api/tasks/{task_id}/report")
         assert report.status_code == 200
         assert report.json()["task_id"] == task_id
+        assert report.json()["content"]["task"]["status"] == "completed"

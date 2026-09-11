@@ -16,6 +16,7 @@ from vulnagent.contracts import (
 )
 
 from ._elf import parse_elf
+from ._callsite import inspect_pe_x64_callsites
 from ._pe import parse_pe
 from ._reader import ParseLimits, entropy
 
@@ -76,11 +77,15 @@ class StaticBinaryReverseAnalyzer:
             "strings_truncated": truncated,
             "warnings": parsed.warnings,
             "format_details": parsed.details,
+            "callsite_semantics": inspect_pe_x64_callsites(data, parsed),
             "capabilities": {
                 "headers": True,
                 "sections": True,
                 "imports_exports": "PE normal directories / ELF section-backed symbols",
                 "function_discovery": "ELF declared symbols only",
+                "callsite_semantics": (
+                    "optional bounded PE x64 decoding; no CFG or reachability proof"
+                ),
                 "cfg": "not available from structural parsing; static result.cfg is empty",
                 "decompilation": False,
                 "unpacking": False,

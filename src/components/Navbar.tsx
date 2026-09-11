@@ -41,6 +41,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   isRunning,
 }) => {
   const { t, language, toggleLanguage } = useTranslation();
+  const canRun = activeTask?.status === "created";
 
   const NAV_ITEMS: { id: ActiveTab; label: string; icon: any; badge?: string }[] = [
     { id: "dashboard", label: t("navDashboard"), icon: Sparkles },
@@ -54,9 +55,9 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-[#dfd6bf] bg-[#eee8d5]/95 backdrop-blur-md">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between h-16 gap-4">
+      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 flex items-center justify-between h-16 gap-4">
         {/* Left: Brand & Target Switcher */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 min-w-0">
           <div
             onClick={() => onSelectTab("dashboard")}
             className="flex items-center gap-2.5 cursor-pointer group select-none"
@@ -71,7 +72,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   VulnAgent
                 </span>
                 <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-[#e6deca] text-[#2aa198] border border-[#d2c8af] font-bold">
-                  v0.2
+                  v0.4
                 </span>
               </div>
               <span className="text-[10px] font-sans text-[#586e75] block -mt-0.5 font-medium">
@@ -92,7 +93,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 >
                   {tasks.map((t) => (
                     <option key={t.task_id} value={t.task_id}>
-                      {t.target.path}
+                      {t.target.path} · {t.status} · {t.task_id.slice(-6)}
                     </option>
                   ))}
                 </select>
@@ -103,7 +104,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         {/* Center: Navigation Pill Tabs */}
-        <nav className="hidden xl:flex items-center gap-1 p-1 rounded-xl bg-[#e6ded0] border border-[#d8ceb8]">
+        <nav className="hidden 2xl:flex items-center gap-1 p-1 rounded-xl bg-[#e6ded0] border border-[#d8ceb8] shrink-0">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
@@ -111,13 +112,13 @@ export const Navbar: React.FC<NavbarProps> = ({
               <button
                 key={item.id}
                 onClick={() => onSelectTab(item.id)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer select-none relative ${
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all cursor-pointer select-none relative ${
                   isActive
                     ? "bg-[#fdf6e3] text-[#2aa198] border border-[#2aa198]/30 shadow-2xs font-semibold"
                     : "text-[#586e75] hover:text-[#2b3638] hover:bg-[#eee8d5]"
                 }`}
               >
-                <Icon className={`w-3.5 h-3.5 ${isActive ? "text-[#2aa198]" : "text-[#839496]"}`} />
+                <Icon className={`w-3.5 h-3.5 shrink-0 ${isActive ? "text-[#2aa198]" : "text-[#839496]"}`} />
                 <span>{item.label}</span>
                 {item.badge && (
                   <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-[#dfd6bf] text-[#586e75]">
@@ -130,7 +131,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         </nav>
 
         {/* Right: Quick Command Palette & Execution Trigger & Language Switcher */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 shrink-0 whitespace-nowrap">
           {/* Language Switcher Button */}
           <button
             onClick={toggleLanguage}
@@ -168,17 +169,26 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Main Action Trigger */}
           <button
             onClick={onTriggerRun}
-            disabled={isRunning}
-            className="px-3.5 py-1.5 rounded-xl bg-[#2aa198] hover:bg-[#238b83] text-white font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 shadow-xs"
+            disabled={isRunning || !canRun}
+            title={!canRun ? (language === "zh" ? "当前任务已完成；请新建或切换到待执行任务" : "This task has completed; select a new task") : undefined}
+            className="px-3.5 py-1.5 rounded-xl bg-[#2aa198] hover:bg-[#238b83] text-white font-bold text-xs flex items-center gap-1.5 whitespace-nowrap transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-xs"
           >
             <Play className={`w-3.5 h-3.5 fill-current ${isRunning ? "animate-spin" : ""}`} />
-            <span className="hidden sm:inline">{isRunning ? t("executingPipeline") : (language === "zh" ? "启动挖掘" : "Run Audit")}</span>
+            <span className="hidden sm:inline">
+              {isRunning
+                ? t("executingPipeline")
+                : !activeTask
+                  ? (language === "zh" ? "暂无任务" : "No Task")
+                : !canRun
+                  ? (language === "zh" ? "审计已完成" : "Audit Complete")
+                  : (language === "zh" ? "启动挖掘" : "Run Audit")}
+            </span>
           </button>
         </div>
       </div>
 
       {/* Mobile / Tablet Horizontal Navigation Scrollbar */}
-      <div className="xl:hidden border-t border-[#dfd6bf] overflow-x-auto py-1 px-4 flex items-center gap-1 bg-[#eee8d5]">
+      <div className="2xl:hidden border-t border-[#dfd6bf] overflow-x-auto py-1 px-4 flex items-center gap-1 bg-[#eee8d5]">
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           const isActive = activeTab === item.id;
@@ -192,7 +202,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   : "text-[#586e75] hover:text-[#2b3638]"
               }`}
             >
-              <Icon className="w-3.5 h-3.5 text-[#2aa198]" />
+              <Icon className={`w-3.5 h-3.5 shrink-0 ${isActive ? "text-[#2aa198]" : "text-[#657b83]"}`} />
               <span>{item.label}</span>
             </button>
           );
@@ -201,4 +211,3 @@ export const Navbar: React.FC<NavbarProps> = ({
     </header>
   );
 };
-

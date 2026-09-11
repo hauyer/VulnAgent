@@ -30,6 +30,25 @@ class SubprocessBackend(SandboxBackend):
 
         result = SandboxResult(
             command=list(command),
+            metadata={
+                "backend_name": "subprocess",
+                "enforced_controls": [
+                    "shell_disabled",
+                    "wall_clock_timeout",
+                    "stdio_capture",
+                ],
+                "unsupported_controls": [
+                    "active_process_limit",
+                    "cpu_time_limit",
+                    "memory_limit",
+                    "file_size_limit",
+                    "filesystem_isolation",
+                    "network_isolation",
+                ],
+                "network_isolation_enforced": False,
+                "filesystem_isolation_enforced": False,
+                "degraded": True,
+            },
         )
 
         if not command:
@@ -109,6 +128,9 @@ class SubprocessBackend(SandboxBackend):
             result.runtime_trace = (
                 self._build_runtime_trace(result)
             )
+            result.runtime_trace.append("sandbox_backend=subprocess")
+            result.runtime_trace.append("network_isolation_enforced=false")
+            result.runtime_trace.append("filesystem_isolation_enforced=false")
 
         return result
 

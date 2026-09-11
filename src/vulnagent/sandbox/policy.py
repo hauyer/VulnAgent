@@ -47,7 +47,9 @@ class SandboxPolicy:
     # 4. Network policy
     # =========================
 
-    # Network access is disabled by default.
+    # Desired network policy. The current subprocess backend records this
+    # intent but cannot enforce OS-level isolation; callers must use audited,
+    # explicitly authorized local targets only.
     network_enabled: bool = False
 
     # Explicitly allowed hosts.

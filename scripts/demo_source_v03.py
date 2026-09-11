@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import argparse
+import json
 import logging
 from pathlib import Path
 
@@ -15,7 +17,7 @@ from vulnagent.utils.ids import new_target_id
 LOGGER = logging.getLogger("vulnagent.demo")
 
 
-async def run_demo() -> None:
+async def run_demo(output: Path | None = None) -> dict[str, object]:
     """Create and run one real source-analysis task through the application."""
     root = Path(__file__).parents[1]
     target_path = root / "samples" / "source_demo"
@@ -55,8 +57,36 @@ async def run_demo() -> None:
         report.content["summary"]["finding_count"],
         report.content["summary"]["evidence_count"],
     )
+    result: dict[str, object] = {
+        "task_id": task.task_id,
+        "status": context.task.status.value,
+        "target": str(target_path.resolve()),
+        "target_executed": False,
+        "route_history": context.task.metadata.get("termination", {}).get(
+            "route_history", []
+        ),
+        "findings": [item.model_dump(mode="json") for item in context.findings],
+        "verifications": [
+            item.model_dump(mode="json") for item in context.verifications
+        ],
+        "evidence_sources": sorted({item.source for item in context.evidence}),
+        "report": report.content,
+    }
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(
+            json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+    return result
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Run the canonical source demo.")
+    parser.add_argument("--output", type=Path)
+    args = parser.parse_args()
+    asyncio.run(run_demo(args.output.resolve() if args.output else None))
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    asyncio.run(run_demo())
+    main()

@@ -93,6 +93,31 @@ def make_pe(bits: int = 64) -> bytes:
     return bytes(data)
 
 
+def make_pe_stdio_call(*, unbounded: bool) -> bytes:
+    """Build a PE32+ fixture that calls the shared UCRT formatting helper."""
+    data = bytearray(make_pe())
+    data[0x200:0x400] = b"\x90" * 0x200
+    helper = b"__stdio_common_vsprintf\0"
+    data[0x4A2 : 0x4A2 + len(helper)] = helper
+    image_base = 0x140000000
+    stub_rva = 0x1100
+    stub_offset = 0x300
+    helper_iat_rva = 0x2060
+    displacement = helper_iat_rva - (stub_rva + 6)
+    data[stub_offset : stub_offset + 6] = b"\xff\x25" + struct.pack("<i", displacement)
+
+    wrapper_rva = 0x1120
+    wrapper_offset = 0x320
+    setup = b"\x49\xc7\xc0\xff\xff\xff\xff" if unbounded else b"\x49\x89\xf0"
+    call_rva = wrapper_rva + len(setup)
+    relative = stub_rva - (call_rva + 5)
+    data[wrapper_offset : wrapper_offset + len(setup) + 6] = (
+        setup + b"\xe8" + struct.pack("<i", relative) + b"\xc3"
+    )
+    assert image_base + helper_iat_rva > image_base + call_rva
+    return bytes(data)
+
+
 def make_elf(bits: int = 64, endian: str = "<") -> bytes:
     """Build a minimal ELF with dynamic imports, object exports and functions."""
     data = bytearray(0x500)
@@ -321,6 +346,33 @@ async def test_pe_import_address_table_fallback(tmp_path: Path) -> None:
     struct.pack_into("<I", data, 0x400, 0)
     result = await analyze(tmp_path, bytes(data))
     assert result.imports == ["KERNEL32.dll!ExitProcess", "KERNEL32.dll!#7"]
+
+
+@pytest.mark.parametrize(
+    ("unbounded", "classification", "inferred_api"),
+    [
+        (True, "unbounded_format_write", "sprintf"),
+        (False, "bounded_count_shape", None),
+    ],
+)
+async def test_pe_x64_stdio_callsite_semantics_are_argument_sensitive(
+    tmp_path: Path,
+    unbounded: bool,
+    classification: str,
+    inferred_api: str | None,
+) -> None:
+    pytest.importorskip("capstone")
+    result = await analyze(tmp_path, make_pe_stdio_call(unbounded=unbounded))
+
+    semantics = result.metadata["callsite_semantics"]
+    assert semantics["available"] is True
+    assert semantics["target_executed"] is False
+    assert len(semantics["callsites"]) == 1
+    callsite = semantics["callsites"][0]
+    assert callsite["classification"] == classification
+    assert callsite["inferred_api"] == inferred_api
+    assert callsite["instruction_window"]
+    assert result.cfg == {}
 
 
 async def test_pe_rejects_unterminated_import_descriptors(tmp_path: Path) -> None:

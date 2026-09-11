@@ -61,6 +61,7 @@ def parse_pe(data: bytes, limits: ParseLimits) -> ParsedBinary:
         "entry_point_rva": entry_rva,
         "machine": machine,
         "characteristics": characteristics,
+        "import_entries": [],
     }
     scanned_bytes = 0
     for index in range(section_count):
@@ -145,6 +146,14 @@ def parse_pe(data: bytes, limits: ParseLimits) -> ParsedBinary:
                     mapped(value, 3)
                     symbol = name_at(value + 2)
                 result.imports.append(f"{dll}!{symbol}")
+                result.details["import_entries"].append(
+                    {
+                        "dll": dll,
+                        "symbol": symbol,
+                        "iat_rva": iat + ordinal_index * step,
+                        "iat_address": image_base + iat + ordinal_index * step,
+                    }
+                )
             else:
                 raise ModuleExecutionError("Unterminated PE import lookup table")
         else:

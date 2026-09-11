@@ -34,6 +34,12 @@ export const VulnerabilitiesView: React.FC<VulnerabilitiesViewProps> = ({
     findings[0] || null
   );
 
+  React.useEffect(() => {
+    if (!selectedFinding && findings.length > 0) {
+      setSelectedFinding(findings[0]);
+    }
+  }, [findings, selectedFinding]);
+
   const filtered = findings.filter((f) => {
     if (selectedStatus === "all") return true;
     return f.status === selectedStatus;
@@ -41,6 +47,15 @@ export const VulnerabilitiesView: React.FC<VulnerabilitiesViewProps> = ({
 
   const confirmedCount = findings.filter((f) => f.status === "confirmed").length;
   const uncertainCount = findings.filter((f) => f.status === "uncertain").length;
+  const selectedEvidence = selectedFinding
+    ? evidenceList.filter((item) => selectedFinding.evidence_ids.includes(item.evidence_id))
+    : [];
+  const selectedEvidenceTypes = Array.from(
+    new Set(selectedEvidence.map((item) => item.evidence_type.replaceAll("_", " "))),
+  ).join(", ");
+  const hasVerificationEvidence = selectedEvidence.some(
+    (item) => item.evidence_type === "verification_result",
+  );
 
   const getSeverityBadge = (severity?: string | null) => {
     switch (severity) {
@@ -108,7 +123,7 @@ export const VulnerabilitiesView: React.FC<VulnerabilitiesViewProps> = ({
 
         <div className="flex items-center gap-2 font-mono text-xs">
           <div className="px-3 py-1.5 rounded-lg bg-[#fce8e6] border border-[#f5b8b5] text-[#dc322f]">
-            <span className="font-bold">{confirmedCount}</span> {language === "zh" ? "已确认真实漏洞" : "Confirmed"}
+            <span className="font-bold">{confirmedCount}</span> {language === "zh" ? "项独立复核确认" : "Confirmed"}
           </div>
           <div className="px-3 py-1.5 rounded-lg bg-[#fbf4e6] border border-[#ecd8a6] text-[#b58900]">
             <span className="font-bold">{uncertainCount}</span> {language === "zh" ? "复核队列中" : "Review Queued"}
@@ -181,7 +196,7 @@ export const VulnerabilitiesView: React.FC<VulnerabilitiesViewProps> = ({
 
                     <div className="flex items-center justify-between text-[11px] text-[#839496] mt-3 pt-2 border-t border-[#dfd6bf] font-mono">
                       <span>{t("vulnConfidence")}: <strong className="text-[#2b3638]">{(f.confidence * 100).toFixed(0)}%</strong></span>
-                      <span className="text-[#2aa198] font-semibold">{f.evidence_ids.length} {language === "zh" ? "个实证工件" : "Proof Artifacts"}</span>
+                      <span className="text-[#2aa198] font-semibold">{f.evidence_ids.length} {language === "zh" ? "条证据记录" : "Evidence Records"}</span>
                     </div>
                   </div>
                 );
@@ -273,18 +288,30 @@ export const VulnerabilitiesView: React.FC<VulnerabilitiesViewProps> = ({
 
                   <div className="p-2.5 rounded-lg bg-[#fdfaf3] border border-[#dfd6bf]">
                     <span className="text-[10px] text-[#839496] uppercase block">
-                      {language === "zh" ? "2. 动态 Fuzz 交叉互证" : "2. Dynamic Fuzz Corroboration"}
+                      {language === "zh" ? "2. 关联结构化证据" : "2. Linked Structured Evidence"}
                     </span>
-                    <span className="text-[#b58900] font-medium">FuzzAgent (ASAN crash)</span>
-                    <span className="text-[10px] text-[#586e75] block mt-0.5">Reproduced SIGSEGV</span>
+                    <span className="text-[#b58900] font-medium">
+                      {selectedEvidence.length} {language === "zh" ? "项证据" : "evidence items"}
+                    </span>
+                    <span className="text-[10px] text-[#586e75] block mt-0.5">
+                      {selectedEvidenceTypes || (language === "zh" ? "暂无关联证据" : "No linked evidence")}
+                    </span>
                   </div>
 
                   <div className="p-2.5 rounded-lg bg-[#fdfaf3] border border-[#cce38d]">
                     <span className="text-[10px] text-[#859900] uppercase block">
                       {language === "zh" ? "3. 独立唯一确认裁定" : "3. Sole Confirmer"}
                     </span>
-                    <span className="text-[#859900] font-bold">VerificationAgent</span>
-                    <span className="text-[10px] text-[#859900] block mt-0.5 font-bold">Status: CONFIRMED</span>
+                    <span className="text-[#859900] font-bold">
+                      {hasVerificationEvidence
+                        ? "VerificationAgent"
+                        : language === "zh"
+                          ? "未找到复核证据"
+                          : "No verification evidence"}
+                    </span>
+                    <span className="text-[10px] text-[#859900] block mt-0.5 font-bold">
+                      Status: {selectedFinding.status.toUpperCase()}
+                    </span>
                   </div>
                 </div>
 
@@ -313,7 +340,7 @@ export const VulnerabilitiesView: React.FC<VulnerabilitiesViewProps> = ({
                             {evId}
                           </span>
                           <span className="text-[10px] text-[#586e75] line-clamp-1">
-                            {match ? match.description : (language === "zh" ? "查看实证" : "View Proof")}
+                            {match ? match.description : (language === "zh" ? "查看证据" : "View Evidence")}
                           </span>
                         </div>
                         <ArrowRight className="w-3 h-3 text-[#839496] group-hover:text-[#2aa198] transition-transform group-hover:translate-x-0.5" />

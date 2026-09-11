@@ -30,6 +30,14 @@ KEYWORD_HINTS: dict[str, tuple[str, ...]] = {
         "license", "serial", "product key", "activation", "activate", "trial",
         "register", "registration", "expired", "expiry", "unlock", "validate",
     ),
+    "network_input": (
+        "recv", "recvfrom", "wsarecv", "socket", "accept", "internetreadfile",
+        "winhttp", "curl_easy", "http request", "network input",
+    ),
+    "memory_operation": (
+        "strcpy", "strcat", "gets", "sprintf", "vsprintf", "scanf", "memcpy",
+        "memmove", "malloc", "calloc", "realloc", "free", "memory operation",
+    ),
 }
 
 _SOURCE_CONFIDENCE = {"import": 0.75, "function": 0.85, "string": 0.5}

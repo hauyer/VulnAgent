@@ -24,8 +24,17 @@ async def test_detects_anti_debug_imports() -> None:
 
 
 async def test_detects_packer_marker_strings() -> None:
-    out = await ObfuscationAnalyzer().inspect(_result(strings=["UPX0", "Themida"]))
+    out = await ObfuscationAnalyzer().inspect(
+        _result(strings=["UPX0", "Themida", "VmprotectBegin"])
+    )
     assert "packer_marker_string" in {s["name"] for s in out["signals"]}
+
+
+async def test_packer_marker_does_not_match_compression_identifier() -> None:
+    out = await ObfuscationAnalyzer().inspect(
+        _result(strings=["CompressionMode", "System.IO.Compression"])
+    )
+    assert "packer_marker_string" not in {s["name"] for s in out["signals"]}
 
 
 async def test_detects_base64_string_obfuscation() -> None:

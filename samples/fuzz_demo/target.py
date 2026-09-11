@@ -8,5 +8,5 @@ def static_audit_marker() -> object:
     return eval(input())
 
 
-if sys.stdin.buffer.read():
+if sys.stdin.buffer.read() == b"VULNAGENT_CODE_MARKER":
     raise SystemExit(7)

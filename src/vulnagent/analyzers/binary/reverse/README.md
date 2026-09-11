@@ -11,7 +11,7 @@
 - `Radare2Adapter.inspect(path, authorized=True)` 为 `aflj`、`agfj` 和（可选）每个数值函数地址的内置 `pdc` 分别启动受控 `r2 -q -c` 调用，避免把组合命令的输出误当 NUL 分隔结果。它将 CFG 标准化为**基本块地址 → 后继基本块地址**的邻接表，函数符号入口不会伪造为 CFG 节点；伪代码仅来自 r2 内置 pdc，不等同于 Ghidra。工具缺失、错误、超时、坏 JSON 或单个 pdc 失败均会形成受限、JSON 可序列化结果。
 - `BinaryArtifactStore(root)` 将 `BinaryAnalysisResult` 和可选工具事实以原子、严格 JSON（拒绝 NaN/Infinity）写入，记录工具日志、版本调用结果和输入指纹等附加事实，并维护同目录 `index.json`。工件名含 task/target 元组的 SHA-256 截断值以避免清理后碰撞；索引条目会严格验证。进程内共享锁避免同一 Python 进程的并发写入丢失条目；当前实现明确采用单进程写者约定，尚未提供跨进程锁。工件中不得传入凭据；不可 JSON 序列化的补充数据会被拒绝。
 
-静态解析器现在还将 `packing_signals` 写入 `metadata`。静态解析器不反汇编字节，因此 `result.cfg` 始终为 `{}`；不能从 ELF 符号或 PE/ELF 结构条目伪造 CFG。
+静态解析器现在还将 `packing_signals` 与 `callsite_semantics` 写入 `metadata`。后者仅在安装 `binary-analysis` 可选依赖且输入为 PE x64 时，用 Capstone 有界解码 UCRT 格式化 helper 的局部调用点参数；它不构建 CFG、不证明可达性，也不直接给出漏洞 Verdict。`result.cfg` 始终为 `{}`，不能从 ELF 符号或 PE/ELF 结构条目伪造 CFG。
 
 ## T1：静态解析实现
 
@@ -34,7 +34,7 @@ payload = result.model_dump_json(indent=2)
 
 | 格式 | T1 已实现 | 明确限制 |
 | --- | --- | --- |
-| PE32 / PE32+ | 魔数、位数、架构、入口、区段、普通命名/序号导入、命名/序号/转发导出 | 不解析延迟导入、资源树、COFF/PDB；不将导出地址冒充函数 |
+| PE32 / PE32+ | 魔数、位数、架构、入口、区段、普通命名/序号导入、命名/序号/转发导出；PE x64 可选局部调用点语义 | 不解析延迟导入、资源树、COFF/PDB；不将导出地址冒充函数；不构建 CFG |
 | ELF32 / ELF64 | 大小端、入口、节区、段范围检查、扩展节区计数、SYMTAB/DYNSYM、导入/导出与声明函数 | 无节区表时不解析 PT_DYNAMIC 符号；不支持符号 SHN_XINDEX，不反汇编 |
 | 通用 | SHA-256、文件大小、文件/节区熵、带文件偏移的 ASCII 和 ASCII 范围 UTF-16 LE/BE 字符串 | 字符串是启发式事实，可能重复或误识别，非完整 Unicode 解码 |
 
@@ -67,7 +67,7 @@ PE 的导入和导出分别受符号数上限约束；ELF 的所有符号表合�
 
 输入总字节数和表项数有界；重复区段扫描超过输入长度时拒绝文件。文件读取/解析使用后台线程，
 取消协程不会强杀已启动线程，因此 T1 不承诺硬超时或进程隔离。沙箱和任务时限由调用方提供。
-T1 无额外第三方解析依赖；不存在因缺少 Ghidra/UPX 而跳过的核心测试。
+T1 的结构解析无额外第三方依赖；缺少 Capstone 时 `callsite_semantics` 明确记录 unavailable，不影响基础 PE/ELF 结果。不存在因缺少 Ghidra/UPX 而跳过的结构解析核心测试。
 
 ### 测试与交接
 

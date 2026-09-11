@@ -1,7 +1,6 @@
 """Cross-platform controlled execution semantics."""
 
 from pathlib import Path
-import sys
 
 import pytest
 
@@ -14,7 +13,11 @@ from vulnagent.contracts import (
     TargetType,
     Task,
 )
-from vulnagent.execution.controlled_executor import ControlledExecutor, build_command
+from vulnagent.execution.controlled_executor import (
+    ControlledExecutor,
+    build_command,
+    sandbox_python_interpreter,
+)
 from vulnagent.fuzz.engine import ControlledFuzzEngine
 
 
@@ -23,7 +26,7 @@ def test_python_target_uses_current_interpreter(tmp_path: Path) -> None:
 
     command = build_command(target)
 
-    assert command[0] == sys.executable
+    assert command[0] == str(sandbox_python_interpreter())
     assert command[1] == str(target)
 
 
@@ -52,6 +55,11 @@ def test_python_target_receives_stdin(tmp_path: Path) -> None:
     assert result.timed_out is False
     assert result.error is None
     assert b"5" in result.stdout
+    assert result.sandbox_metadata["backend_name"] in {
+        "subprocess",
+        "windows_job",
+    }
+    assert result.sandbox_metadata["network_isolation_enforced"] is False
 
 
 def test_nonzero_python_exit_is_a_crash(tmp_path: Path) -> None:

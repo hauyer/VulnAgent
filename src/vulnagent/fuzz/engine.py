@@ -13,6 +13,7 @@ from vulnagent.contracts import (
     FuzzResult,
 )
 from vulnagent.fuzz.executor import ControlledExecutor
+from vulnagent.fuzz.guidance import MutationCase, RiskGuidedMutationPlanner
 from vulnagent.fuzz.mutation import MutationEngine
 from vulnagent.utils.ids import new_evidence_id
 
@@ -33,6 +34,8 @@ class ControlledFuzzEngine:
         self.mutator = MutationEngine(
             seed=seed,
         )
+
+        self.guidance = RiskGuidedMutationPlanner()
 
         self.mutation_count = mutation_count
 
@@ -126,6 +129,35 @@ class ControlledFuzzEngine:
         crash_fingerprints: set[str] = set()
 
         evidence: list[Evidence] = []
+        sandbox_profiles: dict[str, dict[str, Any]] = {}
+
+        risk_hints = self._risk_hints(request)
+        guidance_types = self.guidance.normalize_hints(risk_hints)
+        guided_mutations = 0
+        generic_mutations = 0
+        if guidance_types:
+            evidence.append(
+                Evidence(
+                    evidence_id=new_evidence_id(),
+                    task_id=request.task_id,
+                    evidence_type=EvidenceType.TOOL_RESULT,
+                    source="risk_guided_mutation_planner",
+                    description=(
+                        "Structured static findings selected bounded, non-exploit "
+                        "mutation classes for authorized dynamic validation."
+                    ),
+                    data={
+                        "risk_types": list(guidance_types),
+                        "source_finding_ids": request.metadata.get(
+                            "guidance_source_finding_ids",
+                            [],
+                        ),
+                        "payload_policy": "inert_markers_and_parser_boundaries",
+                    },
+                    reliability=0.85,
+                    created_by="fuzz",
+                )
+            )
 
         # -------------------------------------------------
         # 6. Seed -> Mutation -> Execution
@@ -135,22 +167,52 @@ class ControlledFuzzEngine:
             seed_inputs
         ):
 
-            mutated_inputs = (
-                self.mutator.mutate(
-                    seed,
-                    count=self.mutation_count,
-                )
+            mutation_cases = self._mutation_cases(
+                seed,
+                risk_hints,
             )
 
-            for mutation_index, input_data in enumerate(
-                mutated_inputs
+            for mutation_index, mutation_case in enumerate(
+                mutation_cases
             ):
+
+                input_data = mutation_case.data
+                if mutation_case.risk_type is None:
+                    generic_mutations += 1
+                else:
+                    guided_mutations += 1
 
                 result = self.executor.execute(
                     target=target,
                     input_data=input_data,
                     work_dir=work_dir,
                 )
+
+                sandbox_metadata = getattr(result, "sandbox_metadata", {})
+                if isinstance(sandbox_metadata, dict):
+                    backend_name = sandbox_metadata.get("backend_name")
+                    if isinstance(backend_name, str) and backend_name:
+                        sandbox_profiles[backend_name] = {
+                            "backend_name": backend_name,
+                            "enforced_controls": list(
+                                sandbox_metadata.get("enforced_controls", [])
+                            ),
+                            "unsupported_controls": list(
+                                sandbox_metadata.get("unsupported_controls", [])
+                            ),
+                            "network_isolation_enforced": bool(
+                                sandbox_metadata.get("network_isolation_enforced", False)
+                            ),
+                            "filesystem_isolation_enforced": bool(
+                                sandbox_metadata.get("filesystem_isolation_enforced", False)
+                            ),
+                            "resource_limits": dict(
+                                sandbox_metadata.get("resource_limits", {})
+                            ),
+                            "fail_closed": bool(
+                                sandbox_metadata.get("fail_closed", False)
+                            ),
+                        }
 
                 attempts += 1
 
@@ -196,6 +258,8 @@ class ControlledFuzzEngine:
                         input_data=input_data,
                         seed_index=seed_index,
                         mutation_index=mutation_index,
+                        mutation_strategy=mutation_case.strategy,
+                        risk_type=mutation_case.risk_type,
                     )
                 )
 
@@ -236,8 +300,54 @@ class ControlledFuzzEngine:
                     self.mutation_count
                 ),
                 "seed_count": len(seed_inputs),
+                "mutation_strategy": (
+                    "hybrid_risk_guided" if guidance_types else "generic"
+                ),
+                "guidance_risk_types": list(guidance_types),
+                "guidance_hint_count": len(risk_hints),
+                "guided_mutations": guided_mutations,
+                "generic_mutations": generic_mutations,
+                "crash_fingerprints": sorted(crash_fingerprints),
+                "sandbox_profiles": [
+                    sandbox_profiles[name] for name in sorted(sandbox_profiles)
+                ],
             },
         )
+
+    def _mutation_cases(
+        self,
+        seed: bytes,
+        risk_hints: list[dict[str, Any]],
+    ) -> list[MutationCase]:
+        """Allocate a fixed per-seed budget between guided and generic probes."""
+        if self.mutation_count <= 0:
+            return []
+        if not risk_hints:
+            return [
+                MutationCase(data=item, strategy="generic_random")
+                for item in self.mutator.mutate(seed, count=self.mutation_count)
+            ]
+
+        guided_budget = max(1, (self.mutation_count + 1) // 2)
+        guided = self.guidance.generate(
+            seed,
+            risk_hints,
+            count=guided_budget,
+        )
+        generic_budget = self.mutation_count - len(guided)
+        generic = [
+            MutationCase(data=item, strategy="generic_random")
+            for item in self.mutator.mutate(seed, count=generic_budget)
+        ]
+        return [*guided, *generic]
+
+    @staticmethod
+    def _risk_hints(request: FuzzRequest) -> list[dict[str, Any]]:
+        """Read only bounded structured hint dictionaries from request metadata."""
+        value = request.metadata.get("risk_hints", [])
+        if not isinstance(value, list):
+            return []
+        return [dict(item) for item in value[:16] if isinstance(item, dict)]
 
     # =====================================================
     # Seed loader
@@ -321,6 +431,8 @@ class ControlledFuzzEngine:
         input_data: bytes,
         seed_index: int,
         mutation_index: int,
+        mutation_strategy: str,
+        risk_type: str | None,
     ) -> list[Evidence]:
         """Build Evidence objects for one execution."""
 
@@ -346,6 +458,9 @@ class ControlledFuzzEngine:
                 [],
             )
         )
+        sandbox_metadata = getattr(result, "sandbox_metadata", {})
+        if not isinstance(sandbox_metadata, dict):
+            sandbox_metadata = {}
 
         # -------------------------------------------------
         # Fuzz input evidence
@@ -369,6 +484,8 @@ class ControlledFuzzEngine:
                 ),
                 "sha256": input_hash,
                 "size": len(input_data),
+                "mutation_strategy": mutation_strategy,
+                "risk_type": risk_type,
             },
             reliability=0.9,
             created_by="fuzz",
@@ -412,10 +529,13 @@ class ControlledFuzzEngine:
                 ),
                 "error": result.error,
                 "input_sha256": input_hash,
+                "mutation_strategy": mutation_strategy,
+                "risk_type": risk_type,
 
                 # Step 21:
                 # Runtime trace collected by SandboxManager.
                 "runtime_trace": runtime_trace,
+                "sandbox": sandbox_metadata,
             },
             reliability=0.8,
             created_by="fuzz",
@@ -462,11 +582,14 @@ class ControlledFuzzEngine:
                     )
                 ),
                 "error": result.error,
+                "mutation_strategy": mutation_strategy,
+                "risk_type": risk_type,
 
                 # Step 21:
                 # Preserve runtime trace together
                 # with the execution output.
                 "runtime_trace": runtime_trace,
+                "sandbox": sandbox_metadata,
             },
             reliability=0.8,
             created_by="fuzz",
@@ -492,6 +615,8 @@ class ControlledFuzzEngine:
                         "signature": result.signature,
                         "seed_index": seed_index,
                         "mutation_index": mutation_index,
+                        "mutation_strategy": mutation_strategy,
+                        "risk_type": risk_type,
                     },
                     reliability=0.9,
                     created_by="fuzz",

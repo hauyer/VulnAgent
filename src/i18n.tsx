@@ -11,9 +11,9 @@ const zhTranslations: TranslationDictionary = {
   appTitle: "VulnAgent",
   appSubtitle: "自研多智能体软件漏洞分析与挖掘平台",
   courseBadge: "网络空间安全课程设计",
-  versionBadge: "V0.2 多智能体架构基础版",
+  versionBadge: "V0.4 多智能体证据链增强版",
   systemStatus: "系统状态",
-  statusOnline: "在线 (端口 3000)",
+  statusOnline: "API 在线 (端口 8000)",
 
   // Navigation
   navDashboard: "态势大屏",
@@ -60,10 +60,10 @@ const zhTranslations: TranslationDictionary = {
   // Dashboard View
   dashHeroTitle: "VulnAgent 自主多智能体软件漏洞分析平台",
   dashHeroSubtitle: "网络空间安全课程设计 · 综合静态代码审计、二进制逆向、模糊测试、独立漏洞复核与证据链存证的多智能体协同挖掘体系",
-  dashStatsConfirmed: "已确认真实漏洞",
-  dashStatsConfirmedSub: "经独立复核层证实具备可利用性",
+  dashStatsConfirmed: "独立复核确认项",
+  dashStatsConfirmedSub: "由 Verification 层依据当前证据作出确认",
   dashStatsEvidence: "证据链存证数",
-  dashStatsEvidenceSub: "AST污点/崩溃转储/符号执行证据",
+  dashStatsEvidenceSub: "源码位置、静态分析、运行轨迹与复核证据",
   dashStatsAgents: "多智能体协同运行",
   dashStatsAgentsSub: "LangGraph 状态图与有界路由机制",
   dashStatsStatus: "当前任务分析状态",
@@ -75,14 +75,14 @@ const zhTranslations: TranslationDictionary = {
   inno1Title: "多智能体状态图编排 (Agent Runtime)",
   inno1Desc: "基于 LangGraph 状态机与 Supervisor 结构化路由，RuntimeState 严格维护编排状态，具备最大步数限制与确定性回退机制。",
   inno2Title: "证据在先原则 (Evidence-First)",
-  inno2Desc: "严禁仅凭大模型自然语言判定漏洞。所有候选必须关联源码位置、AST污点、AFL++崩溃转储或反汇编等统一证据实体。",
+  inno2Desc: "严禁仅凭大模型自然语言判定漏洞。所有候选必须关联源码位置、结构化分析结果、受控运行轨迹或反汇编等统一证据实体。",
   inno3Title: "独立漏洞复核机制 (Independent Verification)",
   inno3Desc: "发现模块（Source/Binary/Fuzz）与验证模块严格解耦，发现模块禁止输出 CONFIRMED，仅 Verification 层享有确认权。",
   inno4Title: "静态分析与 Fuzz 动态联动机制",
-  inno4Desc: "AST/CFG 危险 API 路径引导动态 Fuzz 生成初始种子语料，动态崩溃与 Sanitizer 结果反补验证静态污点流。",
+  inno4Desc: "静态危险点生成确定性风险提示，在固定预算内引导受控 Fuzz；运行轨迹与崩溃指纹再回流到独立复核。",
 
   dashBenchmarkTitle: "系统漏洞评测实验基准套件 (Benchmark Suites)",
-  dashBenchmarkSubtitle: "支持切换不同程序样本，评估自研多智能体系统在源码级内存破坏、ELF 二进制逆向与 API 鉴权漏洞中的挖掘效能",
+  dashBenchmarkSubtitle: "切换仓库内自研源码与二进制教学样本，使用统一清单和固定指标评估检测、复核及证据完整性",
   dashAgentFleetTitle: "6 大专业安全智能体协同矩阵",
   dashAgentFleetSubtitle: "继承统一 BaseAgent，通过标准 AgentMessage 结构化消息通信，职责清晰，无缝协同",
 
@@ -102,7 +102,7 @@ const zhTranslations: TranslationDictionary = {
 
   // Evidence View
   eviTitle: "多维度漏洞证据链矩阵与存证库",
-  eviSubtitle: "证据在先原则 (Evidence-First) · 拒绝纯自然语言假说 · 源码/汇编/崩溃转储/符号执行全链路可查",
+  eviSubtitle: "证据在先原则 (Evidence-First) · 拒绝无依据的模型结论 · 源码、二进制、运行轨迹与复核记录全链路可查",
   eviFilterAll: "全部证据",
   eviFilterSource: "源码位置 (Source)",
   eviFilterCrash: "崩溃转储 (Crash Log)",
@@ -122,21 +122,21 @@ const zhTranslations: TranslationDictionary = {
   vulnFilterAll: "全部卷宗",
   vulnFilterCandidate: "待验证候选",
   vulnFilterVerifying: "复核验证中",
-  vulnFilterConfirmed: "已确认真实漏洞",
+  vulnFilterConfirmed: "独立复核确认",
   vulnFilterRejected: "已剔除误报",
   vulnFilterUncertain: "存疑待查",
   vulnTargetTitle: "受影响目标",
   vulnDiscoveredBy: "发现智能体",
   vulnConfidence: "置信度评分",
-  vulnSeverity: "CVSS 严重程度",
+  vulnSeverity: "风险严重度",
   vulnEvidenceRef: "关联证据实体",
   vulnVerificationDossier: "独立复核流程与判定依据",
-  vulnVerificationNote: "根据 AGENTS.md 规范，发现智能体不得直接标记 CONFIRMED，须由 VerificationAgent 运行符号验证或 Fuzz 动态复现后方可确认。",
+  vulnVerificationNote: "根据 AGENTS.md 规范，发现智能体不得直接标记 CONFIRMED；VerificationAgent 必须独立评估关联证据并记录结构化复核结果。",
   vulnRemediationTitle: "安全加固与修复建议",
 
   // Report View
   repTitle: "软件安全审计与漏洞挖掘总报告",
-  repSubtitle: "自动化生成 · 符合课程设计考核与企业级安全评估规范 · 涵盖 CVSS 评估与防御加固路线图",
+  repSubtitle: "由当前任务数据自动生成 · 汇总结构化发现、独立复核、证据链与修复建议",
   repExportMd: "导出 Markdown",
   repExportJson: "导出 JSON",
   repPrint: "打印安全报告",
@@ -159,7 +159,7 @@ const zhTranslations: TranslationDictionary = {
 
   // API Console View
   apiTitle: "REST API 与自动化开发者控制台",
-  apiSubtitle: "交互式测试平台 · 支持触发自主编排流水线、查询证据链矩阵与调取审计报告 (OpenAPI 3.1 &bull; 端口 3000)",
+  apiSubtitle: "交互式测试平台 · 支持触发自主编排流水线、查询证据链矩阵与调取审计报告 (OpenAPI 3.1 • API 端口 8000)",
   apiEndpointsList: "平台可用端点清单",
   apiSendRequest: "发送测试请求",
   apiSending: "请求发送中...",
@@ -191,9 +191,9 @@ const enTranslations: TranslationDictionary = {
   appTitle: "VulnAgent",
   appSubtitle: "Multi-Agent Vulnerability Mining & Analysis Platform",
   courseBadge: "Cybersecurity Course Design",
-  versionBadge: "V0.2 Multi-Agent Architecture",
+  versionBadge: "V0.4 Evidence-First Multi-Agent",
   systemStatus: "System Status",
-  statusOnline: "Online (Port 3000)",
+  statusOnline: "API Online (Port 8000)",
 
   // Navigation
   navDashboard: "Mission Control",
@@ -241,9 +241,9 @@ const enTranslations: TranslationDictionary = {
   dashHeroTitle: "VulnAgent Autonomous Multi-Agent Vulnerability Mining Platform",
   dashHeroSubtitle: "Cybersecurity Course Design Project · Comprehensive software vulnerability discovery system combining static audit, binary analysis, fuzzing, independent verification, and evidence chains",
   dashStatsConfirmed: "Confirmed Vulnerabilities",
-  dashStatsConfirmedSub: "Independently verified & proved exploitable",
+  dashStatsConfirmedSub: "Confirmed by the Verification layer from current evidence",
   dashStatsEvidence: "Evidence Chain Artifacts",
-  dashStatsEvidenceSub: "AST taint / crash dumps / symbolic execution proofs",
+  dashStatsEvidenceSub: "Source locations, static results, runtime traces, and verification evidence",
   dashStatsAgents: "Active Multi-Agent Nodes",
   dashStatsAgentsSub: "LangGraph state machine with bounded routing",
   dashStatsStatus: "Current Task Status",
@@ -259,10 +259,10 @@ const enTranslations: TranslationDictionary = {
   inno3Title: "Independent Verification & De-duplication",
   inno3Desc: "Discovery modules (Source/Binary/Fuzz) are decoupled from verification. Discovery agents cannot set CONFIRMED status; only Verification layer can confirm.",
   inno4Title: "Static Analysis & Dynamic Fuzzing Synergy",
-  inno4Desc: "Static AST/CFG danger sink paths seed AFL++ mutation strategies, while dynamic crash dumps ground and validate static taint paths.",
+  inno4Desc: "Static risk locations produce deterministic guidance for a fixed-budget controlled fuzzer; runtime traces and crash fingerprints feed independent verification.",
 
   dashBenchmarkTitle: "Vulnerability Benchmark Evaluation Suites",
-  dashBenchmarkSubtitle: "Switch between real program targets to evaluate multi-agent performance across source memory corruption, binary cracking, and authorization bugs",
+  dashBenchmarkSubtitle: "Run repository-owned source and binary teaching samples with shared manifests and reproducible detection, verification, and evidence metrics",
   dashAgentFleetTitle: "Collaborative Agent Fleet (6 Specialized Roles)",
   dashAgentFleetSubtitle: "Inheriting from unified BaseAgent, communicating through structured AgentMessage protocols with clear boundaries",
 
@@ -282,11 +282,11 @@ const enTranslations: TranslationDictionary = {
 
   // Evidence View
   eviTitle: "Multi-Dimensional Evidence Chain Matrix",
-  eviSubtitle: "Evidence-First Principle · No ungrounded LLM hypotheses · Verifiable across source, ASM, crash dumps & symbolic execution",
+  eviSubtitle: "Evidence-First · No ungrounded model conclusions · Traceable source, binary, runtime, and verification records",
   eviFilterAll: "All Evidence",
   eviFilterSource: "Source Location",
-  eviFilterCrash: "Crash Log (AFL++)",
-  eviFilterVerif: "Verification Proof",
+  eviFilterCrash: "Crash Log",
+  eviFilterVerif: "Verification Result",
   eviFilterCall: "Call Path",
   eviFilterTaint: "Taint Path",
   eviReliability: "Reliability Score",
@@ -308,15 +308,15 @@ const enTranslations: TranslationDictionary = {
   vulnTargetTitle: "Affected Target",
   vulnDiscoveredBy: "Discovery Agent",
   vulnConfidence: "Confidence Score",
-  vulnSeverity: "CVSS Severity",
+  vulnSeverity: "Risk Severity",
   vulnEvidenceRef: "Associated Evidence",
   vulnVerificationDossier: "Independent Verification & Rationale",
-  vulnVerificationNote: "Per AGENTS.md rules, discovery agents cannot mark CONFIRMED directly. VerificationAgent must perform symbolic or fuzz reproduction first.",
+  vulnVerificationNote: "Per AGENTS.md, discovery agents cannot mark CONFIRMED directly. VerificationAgent must independently evaluate linked evidence and record a structured verdict.",
   vulnRemediationTitle: "Hardening & Remediation Guidance",
 
   // Report View
   repTitle: "Software Security Audit & Vulnerability Report",
-  repSubtitle: "Automatically Generated · Meets Course Design & Benchmark Criteria · Includes CVSS & Hardening Recommendations",
+  repSubtitle: "Generated from current task data · Structured findings, verification, evidence, and remediation guidance",
   repExportMd: "Export Markdown",
   repExportJson: "Export JSON",
   repPrint: "Print Security Report",
@@ -339,7 +339,7 @@ const enTranslations: TranslationDictionary = {
 
   // API Console View
   apiTitle: "REST API & Autonomous Developer Console",
-  apiSubtitle: "Interactive playground for triggering orchestration runs, querying evidence chains, and fetching reports (OpenAPI 3.1 &bull; Port 3000)",
+  apiSubtitle: "Interactive playground for triggering orchestration runs, querying evidence chains, and fetching reports (OpenAPI 3.1 • API Port 8000)",
   apiEndpointsList: "Available Platform Endpoints",
   apiSendRequest: "Send Request",
   apiSending: "Sending...",
@@ -348,7 +348,7 @@ const enTranslations: TranslationDictionary = {
   apiCopyCurl: "Copy cURL",
   apiCopied: "Copied cURL",
   apiWaitingResponse: "Waiting for server response...",
-  apiPromptTest: "Click 'Send Request' to test this API route against port 3000.",
+  apiPromptTest: "Click 'Send Request' to test this API route through the UI proxy to API port 8000.",
 
   // Command Palette
   cmdPlaceholder: "Type a command, search targets, or switch views... (Esc to exit)",

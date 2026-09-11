@@ -111,14 +111,17 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                 onTriggerRun();
                 onClose();
               }}
-              className="w-full flex items-center justify-between p-2.5 rounded-lg hover:bg-[#eef7f6] hover:border-[#2aa198]/40 border border-transparent text-left transition-colors group cursor-pointer text-xs text-[#2b3638]"
+              disabled={activeTask?.status !== "created"}
+              className="w-full flex items-center justify-between p-2.5 rounded-lg hover:bg-[#eef7f6] hover:border-[#2aa198]/40 border border-transparent text-left transition-colors group cursor-pointer text-xs text-[#2b3638] disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <div className="flex items-center gap-2.5">
                 <div className="w-6 h-6 rounded-md bg-[#2aa198]/20 text-[#2aa198] flex items-center justify-center">
                   <Play className="w-3 h-3 fill-current" />
                 </div>
                 <div>
-                  <span className="font-semibold text-[#2b3638]">Re-Execute Autonomous Pipeline</span>
+                  <span className="font-semibold text-[#2b3638]">
+                    {activeTask?.status === "created" ? "Execute Autonomous Pipeline" : "Current Audit Already Completed"}
+                  </span>
                   <span className="text-[11px] text-[#586e75] block">
                     Trigger Planner, Source/Binary Audit, Fuzz, and Verification on current target
                   </span>
@@ -204,7 +207,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             <span>&bull;</span>
             <span>Esc to dismiss</span>
           </div>
-          <span className="text-[#2aa198] font-semibold">VulnAgent OS v0.2.0</span>
+          <span className="text-[#2aa198] font-semibold">VulnAgent OS v0.4</span>
         </div>
       </div>
     </div>

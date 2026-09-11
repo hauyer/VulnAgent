@@ -63,6 +63,8 @@ print("input_size:", len(data))
 
     assert result.metadata["executions"] > 0
     assert result.metadata["launch_failures"] == 0
+    assert result.metadata["sandbox_profiles"]
+    assert result.metadata["sandbox_profiles"][0]["network_isolation_enforced"] is False
 
     # ---------------------------------------------
     # Evidence
@@ -103,3 +105,7 @@ print("input_size:", len(data))
         )
 
         assert isinstance(trace, list)
+        assert item.data["sandbox"]["backend_name"] in {
+            "subprocess",
+            "windows_job",
+        }

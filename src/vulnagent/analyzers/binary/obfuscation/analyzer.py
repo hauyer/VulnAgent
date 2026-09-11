@@ -65,7 +65,7 @@ class ObfuscationAnalyzer:
         if evidence:
             signals.append({"name": "anti_debug_import", "score": 20, "evidence": evidence})
 
-        evidence = self._match_hints(result.strings, _PACKER_MARKERS)
+        evidence = self._match_packer_hints(result.strings)
         if evidence:
             signals.append({"name": "packer_marker_string", "score": 25, "evidence": evidence})
 
@@ -102,5 +102,41 @@ class ObfuscationAnalyzer:
         for value in values[:_MAX_ITEMS]:
             lowered = str(value).lower()
             if any(hint in lowered for hint in hints):
+                matches.append(str(value)[:128])
+        return matches[:8]
+
+    @staticmethod
+    def _match_packer_hints(values: list[str]) -> list[str]:
+        """Match named protectors without substring false positives.
+
+        In particular, ``mpress`` must not match ordinary .NET identifiers such
+        as ``CompressionMode``.  UPX section names and VMProtect SDK markers use
+        well-known suffixes, so those two names receive narrow suffix handling.
+        """
+
+        matches: list[str] = []
+        for value in values[:_MAX_ITEMS]:
+            lowered = str(value).lower()
+            found = False
+            for marker in _PACKER_MARKERS:
+                if marker == ".vmp":
+                    found = marker in lowered
+                elif marker == "upx":
+                    found = re.search(
+                        r"(?<![a-z0-9])upx(?:[0-9!])?(?![a-z0-9])", lowered
+                    ) is not None
+                elif marker == "vmprotect":
+                    found = re.search(
+                        r"(?<![a-z0-9])vmprotect(?:begin|end)?(?![a-z0-9])",
+                        lowered,
+                    ) is not None
+                else:
+                    found = re.search(
+                        rf"(?<![a-z0-9]){re.escape(marker)}(?![a-z0-9])",
+                        lowered,
+                    ) is not None
+                if found:
+                    break
+            if found:
                 matches.append(str(value)[:128])
         return matches[:8]

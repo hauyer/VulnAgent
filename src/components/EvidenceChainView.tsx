@@ -88,12 +88,17 @@ export const EvidenceChainView: React.FC<EvidenceChainViewProps> = ({
         case "source_location": return "源码位置";
         case "crash_log": return "崩溃日志";
         case "verification_result": return "复核结果";
-        case "sanitizer_output": return "ASAN 诊断";
+        case "sanitizer_output": return "Sanitizer 诊断";
         default: return filter;
       }
     }
     return filter === "all" ? "All Artifacts" : filter.replace("_", " ");
   };
+
+  const evidenceScore = (item: Evidence): number =>
+    item.evidence_type === "verification_result" && typeof item.data?.confidence === "number"
+      ? item.data.confidence
+      : item.reliability;
 
   return (
     <div className="space-y-6">
@@ -104,20 +109,20 @@ export const EvidenceChainView: React.FC<EvidenceChainViewProps> = ({
             <div className="w-6 h-6 rounded-lg bg-[#2aa198]/10 border border-[#2aa198]/30 flex items-center justify-center text-[#2aa198]">
               <Database className="w-3.5 h-3.5" />
             </div>
-            <h2 className="text-base font-bold text-[#2b3638]">{t("evidenceTitle")}</h2>
+            <h2 className="text-base font-bold text-[#2b3638]">{t("eviTitle")}</h2>
             <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#e6deca] text-[#2aa198] border border-[#d2c8af] font-semibold">
               Evidence-First
             </span>
           </div>
           <p className="text-xs text-[#586e75]">
-            {t("evidenceSubtitle")}
+            {t("eviSubtitle")}
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           <div className="px-3 py-1.5 rounded-lg bg-[#fdfaf3] border border-[#dfd6bf] text-xs font-mono text-[#586e75] shadow-2xs">
             <span className="text-[#2aa198] font-bold">{evidenceList.length}</span>{" "}
-            {language === "zh" ? "个已确凿凭据" : "Total Verified Artifacts"}
+            {language === "zh" ? "条证据记录" : "evidence records"}
           </div>
         </div>
       </div>
@@ -167,6 +172,9 @@ export const EvidenceChainView: React.FC<EvidenceChainViewProps> = ({
             ) : (
               filtered.map((ev) => {
                 const isSelected = selected?.evidence_id === ev.evidence_id;
+                const scoreLabel = ev.evidence_type === "verification_result"
+                  ? (language === "zh" ? "复核置信" : "verdict confidence")
+                  : (language === "zh" ? "证据可靠度" : "reliability");
                 return (
                   <div
                     key={ev.evidence_id}
@@ -182,7 +190,7 @@ export const EvidenceChainView: React.FC<EvidenceChainViewProps> = ({
                         {ev.evidence_type.replace("_", " ")}
                       </span>
                       <span className="text-[11px] font-mono text-[#859900] font-bold">
-                        {(ev.reliability * 100).toFixed(0)}% {language === "zh" ? "置信" : "trust"}
+                        {(evidenceScore(ev) * 100).toFixed(0)}% {scoreLabel}
                       </span>
                     </div>
 
@@ -238,10 +246,12 @@ export const EvidenceChainView: React.FC<EvidenceChainViewProps> = ({
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="p-3 rounded-xl bg-[#f5eed9] border border-[#dfd6bf]">
                   <span className="text-[10px] text-[#586e75] uppercase font-mono block">
-                    {language === "zh" ? "凭据置信度" : "Reliability Index"}
+                    {selected.evidence_type === "verification_result"
+                      ? (language === "zh" ? "复核结论置信度" : "Verdict Confidence")
+                      : (language === "zh" ? "证据可靠度" : "Evidence Reliability")}
                   </span>
                   <span className="text-lg font-bold font-mono text-[#859900]">
-                    {(selected.reliability * 100).toFixed(0)}%
+                    {(evidenceScore(selected) * 100).toFixed(0)}%
                   </span>
                 </div>
                 <div className="p-3 rounded-xl bg-[#f5eed9] border border-[#dfd6bf]">
@@ -286,7 +296,7 @@ export const EvidenceChainView: React.FC<EvidenceChainViewProps> = ({
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-semibold text-[#2b3638] flex items-center gap-1.5">
                       <Code className="w-3.5 h-3.5 text-[#2aa198]" />
-                      {language === "zh" ? "反编译或源码漏洞片段上下文" : "Decompiled Vulnerable Source Context"}
+                      {language === "zh" ? "源码或反编译证据片段" : "Source or Decompiled Evidence Snippet"}
                     </span>
                     <span className="text-[10px] font-mono text-[#839496]">
                       {language === "zh" ? "代码行" : "Lines"} {selected.data.line_start} - {selected.data.line_end}
@@ -295,9 +305,9 @@ export const EvidenceChainView: React.FC<EvidenceChainViewProps> = ({
 
                   <div className="rounded-xl bg-[#fcf8ed] border border-[#dfd6bf] overflow-hidden font-mono text-xs shadow-2xs">
                     <div className="px-4 py-2 bg-[#eee8d5] border-b border-[#dfd6bf] flex items-center justify-between text-[11px] text-[#586e75]">
-                      <span>{language === "zh" ? "C/C++ 内存安全上下文" : "C / Memory Safe Context"}</span>
-                      <span className="text-[#dc322f] font-bold">
-                        {language === "zh" ? "检测到无界内存拷贝调用" : "Unbounded Copy Detected"}
+                      <span>{selected.evidence_type.replaceAll("_", " ").toUpperCase()}</span>
+                      <span className="text-[#2aa198] font-bold">
+                        {language === "zh" ? `来源：${selected.source}` : `Source: ${selected.source}`}
                       </span>
                     </div>
                     <pre className="p-4 overflow-x-auto text-[#2b3638] leading-relaxed bg-[#fdfaf3]">
@@ -310,10 +320,10 @@ export const EvidenceChainView: React.FC<EvidenceChainViewProps> = ({
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-semibold text-[#2b3638] flex items-center gap-1.5">
                       <Bug className="w-3.5 h-3.5 text-[#dc322f]" />
-                      {language === "zh" ? "AFL++ Crash 崩溃现场与 ASAN 诊断日志" : "AFL++ Crash Dump & AddressSanitizer Telemetry"}
+                      {language === "zh" ? "受控运行崩溃现场与诊断数据" : "Controlled Runtime Crash & Diagnostics"}
                     </span>
                     <span className="text-[10px] font-mono text-[#dc322f] font-bold">
-                      {selected.data.signal || "CRASH SIGSEGV"}
+                      {selected.data.signal || (language === "zh" ? "已记录崩溃" : "CRASH RECORDED")}
                     </span>
                   </div>
 
@@ -347,7 +357,7 @@ export const EvidenceChainView: React.FC<EvidenceChainViewProps> = ({
               ) : (
                 <div>
                   <label className="text-xs font-semibold text-[#2b3638] block mb-2">
-                    {language === "zh" ? "结构化凭据原始数据 (JSON Proof)" : "Structured Artifact Proof"}
+                    {language === "zh" ? "结构化证据原始数据 (JSON)" : "Structured Evidence Data"}
                   </label>
                   <pre className="p-4 rounded-xl bg-[#f5eed9] border border-[#dfd6bf] text-xs font-mono text-[#2b3638] overflow-x-auto whitespace-pre-wrap max-h-[300px]">
                     {JSON.stringify(selected.data, null, 2)}
@@ -357,7 +367,7 @@ export const EvidenceChainView: React.FC<EvidenceChainViewProps> = ({
             </div>
           ) : (
             <div className="p-16 rounded-2xl bg-[#fdfaf3] border border-[#dfd6bf] text-center text-[#839496] text-xs">
-              {language === "zh" ? "请在左侧列表选择凭据以查看完整证据链详情" : "Select an evidence artifact on the left to inspect its proof chain."}
+              {language === "zh" ? "请在左侧列表选择证据以查看结构化详情" : "Select an evidence record on the left to inspect its structured data."}
             </div>
           )}
         </div>

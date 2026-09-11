@@ -153,7 +153,7 @@ export const ApiConsoleView: React.FC<ApiConsoleViewProps> = ({ taskId }) => {
             </div>
             <h2 className="text-base font-bold text-[#2b3638]">{t("apiTitle")}</h2>
             <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#eef7f6] text-[#2aa198] border border-[#bfe3e0] font-semibold">
-              OpenAPI 3.1 &bull; FastAPI :8000
+              OpenAPI 3.1 • FastAPI :8000
             </span>
           </div>
           <p className="text-xs text-[#586e75]">

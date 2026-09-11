@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useLayoutEffect, useRef } from "react";
 import { Navbar } from "./components/Navbar.js";
 import { CommandPalette } from "./components/CommandPalette.js";
 import { DashboardView } from "./components/DashboardView.js";
@@ -34,38 +34,56 @@ export default function App() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const preservedScrollY = useRef<number | null>(null);
+  const [operationNotice, setOperationNotice] = useState<{
+    kind: "success" | "error";
+    text: string;
+  } | null>(null);
+
+  const readApiError = async (response: Response, fallback: string) => {
+    try {
+      const body = await response.json();
+      return typeof body?.detail === "string" ? body.detail : fallback;
+    } catch {
+      return fallback;
+    }
+  };
 
   // Fetch Tasks
-  const fetchTasks = useCallback(async () => {
+  const fetchTasks = useCallback(async (): Promise<Task[]> => {
     try {
       const res = await fetch("/api/tasks");
       if (res.ok) {
         const data: Task[] = await res.json();
         setTasks(data);
-        if (data.length > 0 && !activeTaskId) {
-          setActiveTaskId(data[0].task_id);
-        }
+        setActiveTaskId((current) => current || data[0]?.task_id || null);
+        return data;
       }
     } catch (err) {
       console.error("Failed to load tasks:", err);
     }
-  }, [activeTaskId]);
+    return [];
+  }, []);
 
   // Fetch Active Task Data
-  const fetchActiveTaskData = useCallback(async (taskId: string) => {
+  const fetchActiveTaskData = useCallback(async (taskId: string, includeReport = false) => {
     try {
-      const [eventsRes, findingsRes, evidenceRes, reportRes] = await Promise.all([
+      const [eventsRes, findingsRes, evidenceRes] = await Promise.all([
         fetch(`/api/tasks/${taskId}/events`),
         fetch(`/api/tasks/${taskId}/findings`),
         fetch(`/api/tasks/${taskId}/evidence`),
-        fetch(`/api/tasks/${taskId}/report`),
       ]);
 
       if (eventsRes.ok) setEvents(await eventsRes.json());
       if (findingsRes.ok) setFindings(await findingsRes.json());
       if (evidenceRes.ok) setEvidence(await evidenceRes.json());
-      if (reportRes.ok) setReport(await reportRes.json());
-      else setReport(null);
+      if (includeReport) {
+        const reportRes = await fetch(`/api/tasks/${taskId}/report`);
+        if (reportRes.ok) setReport(await reportRes.json());
+        else setReport(null);
+      } else {
+        setReport(null);
+      }
     } catch (err) {
       console.error("Failed to fetch task details:", err);
     }
@@ -82,9 +100,10 @@ export default function App() {
 
   useEffect(() => {
     if (activeTaskId) {
-      fetchActiveTaskData(activeTaskId);
+      const selected = tasks.find((task) => task.task_id === activeTaskId);
+      fetchActiveTaskData(activeTaskId, selected?.status === "completed");
     }
-  }, [activeTaskId, fetchActiveTaskData]);
+  }, [activeTaskId, fetchActiveTaskData, tasks]);
 
   // Keyboard shortcut for Cmd+K / Ctrl+K
   useEffect(() => {
@@ -98,28 +117,56 @@ export default function App() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  useLayoutEffect(() => {
+    if (preservedScrollY.current !== null) {
+      window.scrollTo({ top: preservedScrollY.current, behavior: "auto" });
+    }
+  }, [activeTaskId, tasks, events, findings, evidence, report, isRunning]);
+
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await fetchTasks();
+    const refreshed = await fetchTasks();
     if (activeTaskId) {
-      await fetchActiveTaskData(activeTaskId);
+      const selected = refreshed.find((task) => task.task_id === activeTaskId);
+      await fetchActiveTaskData(activeTaskId, selected?.status === "completed");
     }
     setIsRefreshing(false);
   };
 
   const handleTriggerRun = async () => {
     if (!activeTaskId || isRunning) return;
+    const selected = tasks.find((task) => task.task_id === activeTaskId);
+    if (selected?.status !== "created") {
+      setOperationNotice({
+        kind: "error",
+        text:
+          language === "zh"
+            ? "当前任务已执行过。请选择或新建 CREATED 状态的任务，避免重复写入证据链。"
+            : "This task has already run. Select or create a task in CREATED state to protect the evidence chain.",
+      });
+      return;
+    }
     setIsRunning(true);
+    setOperationNotice(null);
     try {
       const res = await fetch(`/api/tasks/${activeTaskId}/run`, {
         method: "POST",
       });
-      if (res.ok) {
-        await fetchTasks();
-        await fetchActiveTaskData(activeTaskId);
+      if (!res.ok) {
+        throw new Error(await readApiError(res, "Pipeline run failed"));
       }
+      await fetchTasks();
+      await fetchActiveTaskData(activeTaskId, true);
+      setOperationNotice({
+        kind: "success",
+        text: language === "zh" ? "多智能体审计已完成，证据链与报告已刷新。" : "Audit completed; evidence and report were refreshed.",
+      });
     } catch (err) {
       console.error("Pipeline run failed:", err);
+      setOperationNotice({
+        kind: "error",
+        text: err instanceof Error ? err.message : "Pipeline run failed",
+      });
     } finally {
       setIsRunning(false);
     }
@@ -128,8 +175,13 @@ export default function App() {
   const handleLaunchNewTask = async (
     targetPath: string,
     targetType: "source" | "binary",
-    language?: string
-  ) => {
+    targetLanguage?: string,
+    fileFormat?: string,
+    preserveScroll = false,
+  ): Promise<boolean> => {
+    if (preserveScroll) preservedScrollY.current = window.scrollY;
+    setIsRunning(true);
+    setOperationNotice(null);
     try {
       const res = await fetch("/api/tasks", {
         method: "POST",
@@ -137,23 +189,50 @@ export default function App() {
         body: JSON.stringify({
           target_path: targetPath,
           target_type: targetType,
-          language: language || (targetType === "binary" ? "ELF" : "C"),
+          language: targetLanguage || undefined,
+          file_format: fileFormat || undefined,
         }),
       });
-      if (res.ok) {
-        const newTask: Task = await res.json();
-        await fetchTasks();
-        setActiveTaskId(newTask.task_id);
-        // Automatically run pipeline on the new task
-        setIsRunning(true);
-        await fetch(`/api/tasks/${newTask.task_id}/run`, { method: "POST" });
-        await fetchTasks();
-        await fetchActiveTaskData(newTask.task_id);
-        setIsRunning(false);
+      if (!res.ok) {
+        throw new Error(await readApiError(res, "Failed to create task"));
       }
+      const newTask: Task = await res.json();
+      setActiveTaskId(newTask.task_id);
+      await fetchTasks();
+
+      const runResponse = await fetch(`/api/tasks/${newTask.task_id}/run`, { method: "POST" });
+      if (!runResponse.ok) {
+        throw new Error(await readApiError(runResponse, "Pipeline run failed"));
+      }
+      await fetchTasks();
+      await fetchActiveTaskData(newTask.task_id, true);
+      setOperationNotice({
+        kind: "success",
+        text:
+          language === "zh"
+            ? `目标 ${targetPath} 已完成自动分析。`
+            : `Automatic analysis completed for ${targetPath}.`,
+      });
+      return true;
     } catch (err) {
       console.error("Failed to launch task:", err);
+      setOperationNotice({
+        kind: "error",
+        text: err instanceof Error ? err.message : "Failed to launch task",
+      });
+      return false;
+    } finally {
       setIsRunning(false);
+      if (preserveScroll) {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            if (preservedScrollY.current !== null) {
+              window.scrollTo({ top: preservedScrollY.current, behavior: "auto" });
+              preservedScrollY.current = null;
+            }
+          });
+        });
+      }
     }
   };
 
@@ -175,12 +254,34 @@ export default function App() {
         activeTask={activeTask}
         onSelectTask={(id) => {
           setActiveTaskId(id);
-          fetchActiveTaskData(id);
+          const selected = tasks.find((task) => task.task_id === id);
+          fetchActiveTaskData(id, selected?.status === "completed");
         }}
         onTriggerRun={handleTriggerRun}
         onRefresh={handleRefresh}
         isRunning={isRunning}
       />
+
+      {operationNotice && (
+        <div
+          role="status"
+          className={`max-w-7xl w-[calc(100%-2rem)] mx-auto mt-3 px-4 py-2.5 rounded-xl border text-xs font-medium flex items-center justify-between gap-3 ${
+            operationNotice.kind === "success"
+              ? "bg-[#edf5d3] border-[#cce38d] text-[#586b00]"
+              : "bg-[#fce8e6] border-[#f5b8b5] text-[#a62825]"
+          }`}
+        >
+          <span>{operationNotice.text}</span>
+          <button
+            type="button"
+            onClick={() => setOperationNotice(null)}
+            className="shrink-0 font-mono text-sm hover:opacity-70 cursor-pointer"
+            aria-label={language === "zh" ? "关闭提示" : "Dismiss notice"}
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {/* Main Workspace View Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6">
@@ -207,7 +308,7 @@ export default function App() {
               }
               className="px-4 py-2 rounded-xl bg-[#2aa198] hover:bg-[#238b83] text-white font-bold text-xs shadow-sm transition-colors cursor-pointer"
             >
-              {language === "zh" ? "启动 V0.3 Python 源码演示" : "Start V0.3 Source Demo"}
+              {language === "zh" ? "启动 V0.4 Python 源码演示" : "Start V0.4 Source Demo"}
             </button>
           </div>
         ) : (
@@ -277,7 +378,8 @@ export default function App() {
         onSelectTab={setActiveTab}
         onSelectTask={(id) => {
           setActiveTaskId(id);
-          fetchActiveTaskData(id);
+          const selected = tasks.find((task) => task.task_id === id);
+          fetchActiveTaskData(id, selected?.status === "completed");
         }}
         onTriggerRun={handleTriggerRun}
         tasks={tasks}
@@ -289,11 +391,9 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px]">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-[#859900]" />
-            <span className="text-[#2b3638] font-semibold">feature/core-pipeline</span>
+            <span className="text-[#586e75]">VulnAgent V0.4</span>
             <span>&bull;</span>
-            <span className="text-[#586e75]">VulnAgent V0.3</span>
-            <span>&bull;</span>
-            <span className="text-[#859900]">🌿 工作区干净</span>
+            <span className="text-[#859900]">{language === "zh" ? "本地课程实验环境" : "Local course lab"}</span>
           </div>
 
           <div className="flex items-center gap-3 text-[#657b83]">

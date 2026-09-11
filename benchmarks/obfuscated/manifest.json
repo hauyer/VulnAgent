@@ -1,0 +1,91 @@
+{
+  "schema_version": "1.1",
+  "suite_id": "vulnagent-obfuscated-closed-source-intake-v2",
+  "protection_kind": "obfuscation",
+  "terms_uri": "https://crackmes.one/faq",
+  "terms_summary": "Crackmes are purpose-built reverse-engineering challenges; the site permits non-commercial course use with author attribution and prohibits malware and commercial-software cracking.",
+  "samples": [
+    {
+      "sample_id": "obfuscated-cracknotme-mcm2-20260212",
+      "acquisition_status": "materialized",
+      "qualification": "strict_closed_source",
+      "software": {
+        "name": "CrackNotMe's MCM 2.0",
+        "version": "2.0",
+        "author": "CrackNotMe",
+        "closed_source": true,
+        "source_code_in_archive": false
+      },
+      "protection": {
+        "kind": "obfuscation",
+        "product": "Custom instruction virtualization",
+        "version": "2.0 challenge",
+        "secondary": "mathematical and multi-process protection"
+      },
+      "provenance": {
+        "source_uri": "https://crackmes.one/crackme/698d9ebd3eb49a23d3417763",
+        "download_uri": "https://crackmes.one/download/crackme/698d9ebd3eb49a23d3417763",
+        "license_or_terms": "Crackmes.one FAQ permits non-commercial course use with author attribution and states that hosted crackmes are made to be reverse engineered.",
+        "terms_uri": "https://crackmes.one/faq",
+        "acquired_at": "2026-09-11",
+        "archive_sha256": "f3b8d390384db10eafae09d2d116be142f1d347dad308247e152f862383c99a3"
+      },
+      "authorization": {
+        "static_analysis": true,
+        "tool_transform": true,
+        "dynamic_execution": false,
+        "statement": "Authorized for non-commercial educational reverse engineering by the hosting site's FAQ; this benchmark permits read-only analysis and file-only transformations, credits CrackNotMe, and never executes the target."
+      },
+      "local_path": "materials/cracknotme-mcm-2.exe",
+      "sha256": "553996fbd290ebbd59a9c62d744df4c5d1dbb1920606080e1703e5754d0cf7e6",
+      "file_format": "PE",
+      "architecture": "x86-64",
+      "expected_observations": [
+        "Author description identifies instruction virtualization.",
+        "Public labels identify import/API obfuscation and XOR-protected data.",
+        "Static facts should expose anti-debugging and string-obfuscation indicators."
+      ]
+    },
+    {
+      "sample_id": "obfuscated-desync-dotnet-20260612",
+      "acquisition_status": "materialized",
+      "qualification": "strict_closed_source",
+      "software": {
+        "name": "Desync's C# .NET Extended Obfuscation & Protection",
+        "version": "2026-06-12 upload",
+        "author": "Desync",
+        "closed_source": true,
+        "source_code_in_archive": false
+      },
+      "protection": {
+        "kind": "obfuscation",
+        "product": "Custom .NET JIT-on-demand protection",
+        "version": "not disclosed by author",
+        "secondary": "runtime IL restoration and string obfuscation"
+      },
+      "provenance": {
+        "source_uri": "https://crackmes.one/crackme/6a2c24c78a86e4c2c552541a",
+        "download_uri": "https://crackmes.one/download/crackme/6a2c24c78a86e4c2c552541a",
+        "license_or_terms": "Crackmes.one FAQ permits non-commercial course use with author attribution and states that hosted crackmes are made to be reverse engineered; the author explicitly invites deobfuscation on the sample page.",
+        "terms_uri": "https://crackmes.one/faq",
+        "acquired_at": "2026-09-11",
+        "archive_sha256": "45f8de8114ead14189c63dc06d82bb2e323be2a070fe8931a07b46ba93fd9d67"
+      },
+      "authorization": {
+        "static_analysis": true,
+        "tool_transform": true,
+        "dynamic_execution": false,
+        "statement": "Authorized for non-commercial educational reverse engineering by the hosting site's FAQ and the author's deobfuscation invitation; this benchmark credits Desync and never executes the target."
+      },
+      "local_path": "materials/desync-dotnet-extended-obfuscation.exe",
+      "sha256": "f6469b1c98d98e41aa027fb7370935131583f4fed961bfbccae27302802b476c",
+      "file_format": "PE",
+      "architecture": "x86",
+      "expected_observations": [
+        "Author explicitly invites deobfuscation.",
+        "Public analysis identifies custom JIT-on-demand IL restoration and encrypted strings.",
+        "Static analysis should report string/metadata anomalies without claiming full deobfuscation."
+      ]
+    }
+  ]
+}

@@ -73,7 +73,7 @@ export const ApiConsole: React.FC<ApiConsoleProps> = ({ isOpen, onClose, default
     }
   };
 
-  const curlCommand = `curl -X ${selectedEndpoint.method} http://localhost:3000${resolvedPath} ${
+  const curlCommand = `curl -X ${selectedEndpoint.method} http://127.0.0.1:8000${resolvedPath} ${
     selectedEndpoint.method === "POST" && (requestBody || selectedEndpoint.body)
       ? `-H "Content-Type: application/json" -d '${(requestBody || selectedEndpoint.body || "").replace(/\n/g, "")}'`
       : ""

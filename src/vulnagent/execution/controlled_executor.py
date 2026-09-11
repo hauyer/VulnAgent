@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from vulnagent.sandbox import SandboxManager, SandboxPolicy
 
@@ -24,6 +26,23 @@ class ExecutionResult:
     runtime_trace: list[str]
     executed: bool = False
     error: str | None = None
+    sandbox_metadata: dict[str, Any] = field(default_factory=dict)
+
+
+def sandbox_python_interpreter() -> Path:
+    """Resolve the real Python image used for sandboxed script targets.
+
+    On Windows, a virtual-environment executable or Store alias can act as a
+    launcher that creates a second process.  Starting the installed interpreter
+    image directly lets the Job Object constrain the actual target process from
+    its first instruction.  Other platforms keep the active interpreter.
+    """
+
+    if os.name == "nt":
+        installed_python = Path(sys.base_prefix) / "python.exe"
+        if installed_python.is_file():
+            return installed_python.resolve()
+    return Path(sys.executable).resolve()
 
 
 def build_command(target: Path) -> list[str]:
@@ -31,7 +50,7 @@ def build_command(target: Path) -> list[str]:
 
     if target.suffix.lower() == ".py":
         return [
-            sys.executable,
+            str(sandbox_python_interpreter()),
             str(target),
         ]
 
@@ -49,6 +68,9 @@ class ControlledExecutor:
         self,
         timeout_seconds: float = 1.0,
         max_output_bytes: int = 64 * 1024,
+        max_processes: int = 4,
+        memory_limit_mb: int | None = 256,
+        cpu_time_ms: int | None = None,
     ) -> None:
         self.timeout_seconds = timeout_seconds
         self.max_output_bytes = max_output_bytes
@@ -59,6 +81,13 @@ class ControlledExecutor:
                     timeout_seconds * 1000
                 ),
                 collect_runtime_trace=True,
+                max_processes=max_processes,
+                memory_limit_mb=memory_limit_mb,
+                cpu_time_ms=(
+                    cpu_time_ms
+                    if cpu_time_ms is not None
+                    else max(100, int(timeout_seconds * 1000))
+                ),
             )
         )
 
@@ -136,4 +165,5 @@ class ControlledExecutor:
             ),
             executed=sandbox_result.executed,
             error=sandbox_result.error,
+            sandbox_metadata=dict(sandbox_result.metadata),
         )

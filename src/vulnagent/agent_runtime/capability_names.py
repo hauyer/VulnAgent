@@ -22,6 +22,8 @@ class CapabilityName(StrEnum):
     SOURCE_AUDIT = "source.audit"
 
     BINARY_INSPECT = "binary.inspect"
+    BINARY_LOGIC = "binary.logic"
+    BINARY_OBFUSCATION = "binary.obfuscation"
 
     FUZZ_EXECUTE = "fuzz.execute"
 

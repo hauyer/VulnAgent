@@ -14,6 +14,7 @@ import math
 import os
 import tempfile
 import threading
+import time
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -124,7 +125,19 @@ class BinaryArtifactStore:
                 stream.write(encoded)
                 stream.flush()
                 os.fsync(stream.fileno())
-            os.replace(temporary, path)
+            # On Windows an antivirus/indexer can hold the destination for a
+            # few milliseconds and make an otherwise atomic replacement fail
+            # with a sharing-related PermissionError.  Keep the operation
+            # bounded and retry only that transient error; all other I/O
+            # failures remain immediately visible to the caller.
+            for attempt in range(6):
+                try:
+                    os.replace(temporary, path)
+                    break
+                except PermissionError:
+                    if attempt == 5:
+                        raise
+                    time.sleep(0.005 * (2**attempt))
         except OSError:
             try:
                 os.unlink(temporary)

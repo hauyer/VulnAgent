@@ -15,6 +15,7 @@ from vulnagent.contracts import (
     TaskStatus,
 )
 from vulnagent.core.event_bus import EventBus
+from vulnagent.core.context_store import ContextRepository, InMemoryContextStore
 from vulnagent.core.state_manager import StateManager
 
 
@@ -30,6 +31,7 @@ class Orchestrator:
         evidence_store: EvidenceRepository,
         runtime: AgentRuntime,
         event_bus: EventBus | None = None,
+        context_repository: ContextRepository | None = None,
     ) -> None:
         self.task_manager = task_manager
         self.evidence_store = evidence_store
@@ -37,6 +39,7 @@ class Orchestrator:
         self.state_manager = StateManager()
         self.event_bus = event_bus or EventBus()
         self.runtime = runtime
+        self.context_repository = context_repository or InMemoryContextStore()
 
         # 保存最近一次任务上下文。
         # 成功和失败任务都应该可追踪。
@@ -166,6 +169,7 @@ class Orchestrator:
                     context,
                     failure,
                 )
+                self._save_context(context)
                 return context
 
             # ----------------------------------
@@ -177,6 +181,15 @@ class Orchestrator:
                 TaskStatus.COMPLETED,
                 metadata={"termination": termination},
             )
+
+            # ReportAgent necessarily observes the REPORTING state.  Once the
+            # lifecycle reaches its terminal state, keep the embedded report
+            # snapshot consistent with the task returned by the public API.
+            for report in context.reports:
+                if isinstance(report.content.get("task"), dict):
+                    report.content["task"] = context.task.model_dump(mode="json")
+
+            self._save_context(context)
 
             return context
 
@@ -198,6 +211,14 @@ class Orchestrator:
                 exc,
             )
 
+            try:
+                self._save_context(context)
+            except Exception:
+                logger.exception(
+                    "Unable to persist failed context for task %s",
+                    context.task.task_id,
+                )
+
             raise
 
         finally:
@@ -212,7 +233,18 @@ class Orchestrator:
     ) -> AnalysisContext | None:
         """Return the latest known context for a task."""
 
-        return self._contexts.get(task_id)
+        context = self._contexts.get(task_id)
+        if context is not None:
+            return context
+        persisted = self.context_repository.get_context(task_id)
+        if persisted is not None:
+            self._contexts[task_id] = persisted
+        return persisted
+
+    def _save_context(self, context: AnalysisContext) -> None:
+        """Persist and cache an isolated context snapshot."""
+        snapshot = self.context_repository.save_context(context)
+        self._contexts[context.task.task_id] = snapshot
 
     def is_running(
         self,

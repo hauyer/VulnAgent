@@ -7,6 +7,7 @@ import threading
 from pathlib import Path
 
 import pytest
+import vulnagent.analyzers.binary.reverse.artifacts as artifacts_module
 
 from vulnagent.analyzers.binary.common import inspect_packing_signals
 from vulnagent.analyzers.binary.reverse import (
@@ -121,6 +122,48 @@ def test_radare2_missing_tool_never_runs(tmp_path: Path) -> None:
     assert adapter.inspect(path).status == "not_authorized"
 
 
+def test_radare2_accepts_valid_empty_function_list(tmp_path: Path) -> None:
+    path = tmp_path / "managed.exe"
+    path.write_bytes(b"MZmanaged")
+    commands: list[list[str]] = []
+
+    def runner(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, "[]", "")
+
+    run = Radare2Adapter(which=lambda _: "/mock/r2", runner=runner).inspect(
+        path, authorized=True
+    )
+
+    assert run.status == "ok"
+    assert run.facts and run.facts["functions"] == []
+    assert run.facts["cfg"] == {}
+    assert len(commands) == 1
+
+
+def test_radare2_accepts_addr_fields_from_version_6_json(tmp_path: Path) -> None:
+    path = tmp_path / "input.bin"
+    path.write_bytes(b"data")
+
+    def runner(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        source = command[3]
+        if "aflj" in source:
+            text = '[{"addr":4096,"name":"main","size":32}]'
+        elif "agfj" in source:
+            text = '[{"addr":4096,"blocks":[{"addr":4096,"jump":4112}]}]'
+        else:
+            text = "int main(void) { return 0; }"
+        return subprocess.CompletedProcess(command, 0, text, "")
+
+    run = Radare2Adapter(which=lambda _: "/mock/r2", runner=runner).inspect(
+        path, authorized=True
+    )
+
+    assert run.status == "ok"
+    assert run.facts and run.facts["functions"][0]["address"] == 4096
+    assert run.facts["cfg"] == {"0x1000": ["0x1010"]}
+
+
 def test_radare2_uses_separate_commands_and_correct_block_adjacency(tmp_path: Path) -> None:
     path = tmp_path / "input.bin"
     path.write_bytes(b"data")
@@ -222,3 +265,23 @@ def test_artifact_store_in_process_lock_preserves_concurrent_entries(tmp_path: P
         thread.join()
     assert not errors
     assert len(json.loads((tmp_path / "index.json").read_text())["artifacts"]) == 12
+
+
+def test_artifact_store_retries_transient_windows_replace_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real_replace = artifacts_module.os.replace
+    attempts = 0
+
+    def transient_replace(source: str, destination: str | Path) -> None:
+        nonlocal attempts
+        attempts += 1
+        if attempts < 3:
+            raise PermissionError("transient sharing violation")
+        real_replace(source, destination)
+
+    monkeypatch.setattr(artifacts_module.os, "replace", transient_replace)
+    saved = BinaryArtifactStore(tmp_path).save_result(result())
+
+    assert saved.is_file()
+    assert attempts >= 4  # artifact and index replacements, including two retries

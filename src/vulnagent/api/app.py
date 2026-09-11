@@ -2,7 +2,7 @@
 
 from fastapi import FastAPI
 
-from vulnagent.api.routes import evidence, findings, health, reports, tasks, verifications
+from vulnagent.api.routes import evidence, findings, health, reports, tasks, uploads, verifications
 from vulnagent.bootstrap import ApplicationServices, build_profile_application
 from vulnagent.settings import Settings, get_settings
 
@@ -28,12 +28,14 @@ def create_app(
     application.include_router(evidence.router)
     application.include_router(reports.router)
     application.include_router(verifications.router)
+    application.include_router(uploads.router)
     application.include_router(health.router, prefix="/api")
     application.include_router(tasks.router, prefix="/api")
     application.include_router(findings.router, prefix="/api")
     application.include_router(evidence.router, prefix="/api")
     application.include_router(reports.router, prefix="/api")
     application.include_router(verifications.router, prefix="/api")
+    application.include_router(uploads.router, prefix="/api")
     return application
 
 

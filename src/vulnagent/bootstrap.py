@@ -39,6 +39,11 @@ from vulnagent.analyzers.binary.reverse import (
     MockBinaryReverseAnalyzer,
     StaticBinaryReverseAnalyzer,
 )
+from vulnagent.analyzers.binary.logic import LogicAnalyzer, MockLogicAnalyzer
+from vulnagent.analyzers.binary.obfuscation import (
+    MockObfuscationAnalyzer,
+    ObfuscationAnalyzer,
+)
 from vulnagent.analyzers.source.audit import (
     MockSourceAuditor,
     PythonSourceAuditor,
@@ -52,6 +57,7 @@ from vulnagent.contracts import (
     TaskRepository,
 )
 from vulnagent.core.dependencies import CapabilityBundle
+from vulnagent.core.context_store import ContextRepository, InMemoryContextStore
 from vulnagent.core.event_bus import EventBus
 from vulnagent.core.orchestrator import Orchestrator
 from vulnagent.core.task_manager import (
@@ -71,6 +77,7 @@ from vulnagent.settings import (
     Settings,
     get_settings,
 )
+from vulnagent.storage.sqlite import SQLiteRepository
 from vulnagent.verification.verifier import (
     MockVerifier,
 )
@@ -93,6 +100,7 @@ class ApplicationServices:
 
     task_manager: TaskRepository
     evidence_store: EvidenceRepository
+    context_repository: ContextRepository
     event_bus: EventBus
 
     capabilities: CapabilityBundle
@@ -115,6 +123,8 @@ def build_mock_capabilities() -> CapabilityBundle:
         source_parser=MockSourceParser(),
         source_auditor=MockSourceAuditor(),
         binary_analyzer=MockBinaryReverseAnalyzer(),
+        binary_logic_analyzer=MockLogicAnalyzer(),
+        binary_obfuscation_analyzer=MockObfuscationAnalyzer(),
         fuzz_engine=MockFuzzEngine(),
         verifier=MockVerifier(),
         report_generator=StructuredReportGenerator(),
@@ -132,6 +142,8 @@ def build_v03_source_capabilities() -> CapabilityBundle:
         source_parser=SourceProjectParser(),
         source_auditor=PythonSourceAuditor(),
         binary_analyzer=StaticBinaryReverseAnalyzer(),
+        binary_logic_analyzer=LogicAnalyzer(),
+        binary_obfuscation_analyzer=ObfuscationAnalyzer(),
         fuzz_engine=ControlledFuzzEngine(),
         verifier=EvidenceVerifier(),
         report_generator=StructuredReportGenerator(),
@@ -167,6 +179,20 @@ def build_tool_registry(
                 adapter=capabilities.binary_analyzer.analyze,
                 owner="P4",
                 capability_type="binary",
+            ),
+            ToolSpec(
+                name=CapabilityName.BINARY_LOGIC.value,
+                description="Locate high-value logic from extracted binary facts",
+                adapter=capabilities.binary_logic_analyzer.inspect,
+                owner="P5",
+                capability_type="binary_semantics",
+            ),
+            ToolSpec(
+                name=CapabilityName.BINARY_OBFUSCATION.value,
+                description="Score packing and obfuscation signals from binary facts",
+                adapter=capabilities.binary_obfuscation_analyzer.inspect,
+                owner="P5",
+                capability_type="binary_semantics",
             ),
             ToolSpec(
                 name=CapabilityName.FUZZ_EXECUTE.value,
@@ -226,6 +252,7 @@ def validate_tool_registry(
 
 def build_agent_registry(
     capabilities: CapabilityBundle,
+    llm: BaseLLM | None = None,
 ) -> AgentRegistry:
     """Build runtime agents from injected capability Protocols.
 
@@ -238,7 +265,7 @@ def build_agent_registry(
     registry.register_many(
         {
             AgentRoute.PLANNER.value:
-                PlannerAgent(),
+                PlannerAgent(llm),
 
             AgentRoute.SOURCE_ANALYSIS.value:
                 SourceAuditAgent(
@@ -249,6 +276,8 @@ def build_agent_registry(
             AgentRoute.BINARY_ANALYSIS.value:
                 BinaryAnalysisAgent(
                     capabilities.binary_analyzer,
+                    capabilities.binary_logic_analyzer,
+                    capabilities.binary_obfuscation_analyzer,
                 ),
 
             AgentRoute.FUZZ.value:
@@ -297,6 +326,7 @@ def build_application(
     agent_registry: AgentRegistry | None = None,
     tool_registry: ToolRegistry | None = None,
     runtime_policy: RuntimePolicy | None = None,
+    context_repository: ContextRepository | None = None,
 ) -> ApplicationServices:
     """Compose a complete VulnAgent application dependency graph.
 
@@ -313,16 +343,29 @@ def build_application(
         else get_settings()
     )
 
-    resolved_task_manager = (
-        task_manager
-        if task_manager is not None
-        else InMemoryTaskManager()
+    storage_backend = resolved_settings.storage_backend.strip().casefold()
+    if storage_backend not in {"memory", "sqlite"}:
+        raise ValueError(
+            f"Unsupported STORAGE_BACKEND {storage_backend!r}; "
+            "expected 'memory' or 'sqlite'"
+        )
+    shared_sqlite = (
+        SQLiteRepository(resolved_settings.sqlite_path)
+        if storage_backend == "sqlite"
+        and task_manager is None
+        and evidence_store is None
+        and context_repository is None
+        else None
     )
 
+    resolved_task_manager = task_manager or shared_sqlite or InMemoryTaskManager()
+
     resolved_evidence_store = (
-        evidence_store
-        if evidence_store is not None
-        else InMemoryEvidenceStore()
+        evidence_store or shared_sqlite or InMemoryEvidenceStore()
+    )
+
+    resolved_context_repository = (
+        context_repository or shared_sqlite or InMemoryContextStore()
     )
 
     resolved_event_bus = (
@@ -334,7 +377,7 @@ def build_application(
     resolved_llm = (
         llm
         if llm is not None
-        else LLMRouter().get(
+        else LLMRouter.from_settings(resolved_settings).get(
             resolved_settings.llm_provider
         )
     )
@@ -355,7 +398,8 @@ def build_application(
         agent_registry
         if agent_registry is not None
         else build_agent_registry(
-            capabilities
+            capabilities,
+            resolved_llm,
         )
     )
 
@@ -380,12 +424,14 @@ def build_application(
         resolved_evidence_store,
         runtime,
         resolved_event_bus,
+        resolved_context_repository,
     )
 
     return ApplicationServices(
         settings=resolved_settings,
         task_manager=resolved_task_manager,
         evidence_store=resolved_evidence_store,
+        context_repository=resolved_context_repository,
         event_bus=resolved_event_bus,
         capabilities=capabilities,
         agent_registry=resolved_agent_registry,

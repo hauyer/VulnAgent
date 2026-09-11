@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 
 @dataclass
@@ -27,6 +27,10 @@ class SandboxResult:
     error: Optional[str] = None
 
     runtime_trace: List[str] = field(default_factory=list)
+
+    # Backend capability facts. These are deliberately separate from policy
+    # intent so callers cannot mistake a requested control for an enforced one.
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
     def success(self) -> bool:
         """

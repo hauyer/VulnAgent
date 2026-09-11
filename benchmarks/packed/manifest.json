@@ -1,0 +1,92 @@
+{
+  "schema_version": "1.1",
+  "suite_id": "vulnagent-packed-closed-source-intake-v2",
+  "protection_kind": "packing",
+  "terms_uri": "https://crackmes.one/faq",
+  "terms_summary": "Crackmes are purpose-built reverse-engineering challenges; the site permits non-commercial course use with author attribution and prohibits malware and commercial-software cracking.",
+  "samples": [
+    {
+      "sample_id": "packed-aj21h-spaghetti-20260501",
+      "acquisition_status": "materialized",
+      "qualification": "strict_closed_source",
+      "software": {
+        "name": "aj21h's Spaghetti",
+        "version": "2026-05-01 release",
+        "author": "aj21h",
+        "closed_source": true,
+        "source_code_in_archive": false
+      },
+      "protection": {
+        "kind": "packing",
+        "product": "UPX",
+        "version": "not disclosed by author",
+        "secondary": "custom code-virtualization VM"
+      },
+      "provenance": {
+        "source_uri": "https://crackmes.one/crackme/69f4d57e2b3df128c1df5ab7",
+        "download_uri": "https://crackmes.one/download/crackme/69f4d57e2b3df128c1df5ab7",
+        "license_or_terms": "Crackmes.one FAQ permits non-commercial course use with author attribution and states that hosted crackmes are made to be reverse engineered.",
+        "terms_uri": "https://crackmes.one/faq",
+        "acquired_at": "2026-09-11",
+        "archive_sha256": "810610edd1b741fbc5f5e6c7255e58f251ab5c0e7f58aaa2d255721b7005aa99",
+        "nested_archive_sha256": "f5702c255515ef9a228a3db448a820df96f9810c442baf0102174e65865a2c77"
+      },
+      "authorization": {
+        "static_analysis": true,
+        "tool_transform": true,
+        "dynamic_execution": false,
+        "statement": "Authorized for non-commercial educational reverse engineering by the hosting site's FAQ; this benchmark permits read-only analysis and file-only unpacking, credits aj21h, and never executes the target."
+      },
+      "local_path": "materials/aj21h-spaghetti-crackme.exe",
+      "sha256": "f80f946a259c2f011d62aac015e24c569dbcf09716d503cf5c3a2f62e125547a",
+      "file_format": "PE",
+      "architecture": "x86-64",
+      "expected_observations": [
+        "Author description identifies UPX plus obfuscation.",
+        "PE contains UPX0, UPX1 and UPX2 section markers.",
+        "UPX list/unpack should operate without running the target."
+      ]
+    },
+    {
+      "sample_id": "packed-kowfsun-custom-20260225",
+      "acquisition_status": "materialized",
+      "qualification": "strict_closed_source",
+      "software": {
+        "name": "Kowfsun's Custom packed crackme",
+        "version": "2026-02-25 upload",
+        "author": "Kowfsun",
+        "closed_source": true,
+        "source_code_in_archive": false
+      },
+      "protection": {
+        "kind": "packing",
+        "product": "Custom C-stub packer",
+        "version": "not disclosed by author",
+        "secondary": "stack/register bytecode VM"
+      },
+      "provenance": {
+        "source_uri": "https://crackmes.one/crackme/699e9639c2d74fe054b1c372",
+        "download_uri": "https://crackmes.one/download/crackme/699e9639c2d74fe054b1c372",
+        "license_or_terms": "Crackmes.one FAQ permits non-commercial course use with author attribution and states that hosted crackmes are made to be reverse engineered.",
+        "terms_uri": "https://crackmes.one/faq",
+        "acquired_at": "2026-09-11",
+        "archive_sha256": "65ccbef6735f9951b566b539a6e5bb76e004bdc4ee1ecfc2e35e1c1138786e32"
+      },
+      "authorization": {
+        "static_analysis": true,
+        "tool_transform": true,
+        "dynamic_execution": false,
+        "statement": "Authorized for non-commercial educational reverse engineering by the hosting site's FAQ; this benchmark permits read-only analysis and file-only transformations, credits Kowfsun, and never executes the target."
+      },
+      "local_path": "materials/kowfsun-custom-packed-out.exe",
+      "sha256": "99279210c3eb9bd8302125d5651d0dcc1fe1a52a95412792c662963cb3339995",
+      "file_format": "PE",
+      "architecture": "x86-64",
+      "expected_observations": [
+        "Author description identifies a custom C-stub packer.",
+        "Author description identifies a stack/register bytecode VM.",
+        "Static analysis should retain weak/anomalous signals rather than invent a named-packer verdict."
+      ]
+    }
+  ]
+}
