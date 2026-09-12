@@ -84,13 +84,24 @@ class AgentRuntime:
     ) -> None:
         self.policy = policy or RuntimePolicy()
         self.router = router or AgentRouter(self.policy)
-        self.supervisor = supervisor or Supervisor(self.policy.max_analysis_retries)
+        self._agents = dict(agents)
+        self.supervisor = supervisor or Supervisor(
+            self.policy.max_analysis_retries,
+            available_routes=set(self._agents),
+        )
         self.pipeline = pipeline or Pipeline()
         self.publish_event = publish_event
         self.tool_registry = tool_registry or ToolRegistry()
         self.llm = llm
-        self._agents = dict(agents)
-        required = {route.value for route in AgentRoute if route is not AgentRoute.FINISH}
+        required = {
+            AgentRoute.PLANNER.value,
+            AgentRoute.SOURCE_ANALYSIS.value,
+            AgentRoute.BINARY_ANALYSIS.value,
+            AgentRoute.FUZZ.value,
+            AgentRoute.VERIFICATION.value,
+            AgentRoute.REVIEWER.value,
+            AgentRoute.REPORT.value,
+        }
         missing = required.difference(self._agents)
         if missing:
             raise ValueError(f"Missing runtime agents: {sorted(missing)}")
@@ -281,6 +292,21 @@ class AgentRuntime:
             else:
                 decision = routed
 
+            if (
+                decision.route is not AgentRoute.FINISH
+                and decision.route.value not in self._agents
+            ):
+                decision = RouteDecision(
+                    route=(
+                        AgentRoute.FINISH
+                        if AgentRoute.REPORT.value in state["route_history"]
+                        else AgentRoute.REPORT
+                    ),
+                    reason=f"optional agent is not configured: {decision.route.value}",
+                    fallback_used=True,
+                    execution_failed=True,
+                )
+
             # -------------------------------------------------
             # 5. Count retry only after Router accepted it
             # -------------------------------------------------
@@ -360,7 +386,7 @@ class AgentRuntime:
 
         builder.add_node("supervisor", supervise)
         for route in AgentRoute:
-            if route is AgentRoute.FINISH:
+            if route is AgentRoute.FINISH or route.value not in self._agents:
                 continue
             builder.add_node(route.value, self._agent_node(route, task, context, on_route))
             builder.add_edge(route.value, "supervisor")
@@ -369,7 +395,14 @@ class AgentRuntime:
         builder.add_conditional_edges(
             "supervisor",
             lambda state: state["next_agent"],
-            {**{route.value: route.value for route in AgentRoute if route is not AgentRoute.FINISH}, AgentRoute.FINISH.value: END},
+            {
+                **{
+                    route.value: route.value
+                    for route in AgentRoute
+                    if route is not AgentRoute.FINISH and route.value in self._agents
+                },
+                AgentRoute.FINISH.value: END,
+            },
         )
         return builder.compile()
 
@@ -507,7 +540,10 @@ class AgentRuntime:
         message_type = {
             AgentRoute.PLANNER: AgentMessageType.TASK,
             AgentRoute.SOURCE_ANALYSIS: AgentMessageType.REQUEST_ANALYSIS,
+            AgentRoute.CODE_AUDIT: AgentMessageType.REQUEST_ANALYSIS,
             AgentRoute.BINARY_ANALYSIS: AgentMessageType.REQUEST_ANALYSIS,
+            AgentRoute.PROGRAM_RESTORATION: AgentMessageType.REQUEST_ANALYSIS,
+            AgentRoute.CODE_DEOBFUSCATION: AgentMessageType.REQUEST_ANALYSIS,
             AgentRoute.FUZZ: AgentMessageType.FUZZ_REQUEST,
             AgentRoute.VERIFICATION: AgentMessageType.REQUEST_VERIFICATION,
             AgentRoute.REVIEWER: AgentMessageType.REVIEW_REQUEST,
@@ -572,7 +608,10 @@ class AgentRuntime:
         return {
             AgentRoute.PLANNER: TaskStatus.PLANNING,
             AgentRoute.SOURCE_ANALYSIS: TaskStatus.ANALYZING,
+            AgentRoute.CODE_AUDIT: TaskStatus.ANALYZING,
             AgentRoute.BINARY_ANALYSIS: TaskStatus.ANALYZING,
+            AgentRoute.PROGRAM_RESTORATION: TaskStatus.ANALYZING,
+            AgentRoute.CODE_DEOBFUSCATION: TaskStatus.ANALYZING,
             AgentRoute.FUZZ: TaskStatus.DYNAMIC_TESTING,
             AgentRoute.VERIFICATION: TaskStatus.VERIFYING,
             AgentRoute.REVIEWER: TaskStatus.VERIFYING,

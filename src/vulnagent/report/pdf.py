@@ -141,8 +141,10 @@ def write_report_pdf(
     summary = _mapping(report.get("summary"))
     risk = _mapping(report.get("risk_summary"))
     counts = _mapping(risk.get("counts"))
+    compliance_notice = report.get("compliance_notice") or "仅用于安全审计与防御研究，仅限教学实验使用"
     story: list[Any] = [
         para(title, title_style),
+        para(compliance_notice, muted),
         table(
             [
                 [para("Task", muted), para("Target", muted), para("类型", muted), para("状态", muted)],
@@ -173,8 +175,134 @@ def write_report_pdf(
         para(risk.get("headline")),
         para(f"目标路径：{_text(target.get('path'))}", muted),
         para(f"创建时间：{_text(task.get('created_at'))}", muted),
-        para("漏洞发现与独立复核", heading),
     ]
+
+    binary_protection = _mapping(report.get("binary_protection_analysis"))
+    if binary_protection:
+        protection = _mapping(binary_protection.get("protection"))
+        restoration = _mapping(binary_protection.get("restoration"))
+        validation = _mapping(restoration.get("validation"))
+        metrics = _mapping(restoration.get("metrics"))
+        deobfuscation = _mapping(binary_protection.get("deobfuscation"))
+        readability = _mapping(deobfuscation.get("readability"))
+        story.extend(
+            [
+                para(binary_protection.get("title") or "二进制程序保护分析专项", heading),
+                table(
+                    [
+                        [para("保护类型", muted), para("强度", muted), para("还原状态", muted), para("可解析", muted), para("耗时", muted)],
+                        [
+                            para(protection.get("family") or "未归因"),
+                            para(f"L{_text(protection.get('level') or 0)}"),
+                            para(restoration.get("status") or "not_run"),
+                            para(bool(validation.get("parseable"))),
+                            para(f"{_text(metrics.get('elapsed_ms') or 0)} ms"),
+                        ],
+                    ],
+                    [34 * mm, 24 * mm, 38 * mm, 28 * mm, 36 * mm],
+                ),
+                para(
+                    "混淆类型：{types}　可读性：{before} → {after}".format(
+                        types="、".join(map(_text, _list(deobfuscation.get("detected_types")))) or "未检出",
+                        before=_text(readability.get("before") or 0),
+                        after=_text(readability.get("after") or 0),
+                    )
+                ),
+            ]
+        )
+        chain_data = [[para("阶段", muted), para("Evidence ID", muted), para("来源", muted)]]
+        for raw_item in _list(binary_protection.get("evidence_chain")):
+            item = _mapping(raw_item)
+            chain_data.append([
+                para(item.get("stage"), muted),
+                para(item.get("evidence_id"), muted),
+                para(item.get("source"), muted),
+            ])
+        if len(chain_data) > 1:
+            story.append(table(chain_data, [66 * mm, 55 * mm, 39 * mm]))
+
+    software_code = _mapping(report.get("software_code_security"))
+    if software_code:
+        distribution = _mapping(software_code.get("risk_level_distribution"))
+        story.extend(
+            [
+                para(software_code.get("title") or "大模型服务代码安全审计", heading),
+                para(software_code.get("compliance_notice"), muted),
+                table(
+                    [
+                        [para("代码风险", muted), para("高风险", muted), para("中风险", muted), para("低风险", muted)],
+                        [
+                            para(software_code.get("finding_count", 0)),
+                            para(distribution.get("HIGH", 0)),
+                            para(distribution.get("MEDIUM", 0)),
+                            para(distribution.get("LOW", 0)),
+                        ],
+                    ],
+                    [40 * mm] * 4,
+                ),
+            ]
+        )
+        for raw_dossier in _list(software_code.get("dossiers")):
+            dossier = _mapping(raw_dossier)
+            location = _mapping(dossier.get("source_location"))
+            assessment = _mapping(dossier.get("agent_assessment"))
+            dynamic = _mapping(dossier.get("dynamic_validation"))
+            remediation = _mapping(dossier.get("remediation"))
+            block = [
+                para(dossier.get("title"), finding_heading),
+                para(
+                    "类型：{kind}　等级：{severity}　状态：{status}　CWE：{cwe}".format(
+                        kind=_text(dossier.get("vulnerability_type")),
+                        severity=_text(dossier.get("risk_level")),
+                        status=_text(dossier.get("status")),
+                        cwe=_text(dossier.get("cwe_id")),
+                    ),
+                    muted,
+                ),
+                para(
+                    "源码定位：{file} · {function} · line {line}".format(
+                        file=_text(location.get("file_path")),
+                        function=_text(location.get("function_name")),
+                        line=_text(location.get("line_start")),
+                    )
+                ),
+                para("智能体研判：" + _text(assessment.get("summary") or "尚无")),
+                para(
+                    "受控验证："
+                    + (
+                        "用例 {cases}，异常 {anomalies}，环境已重置：{reset}".format(
+                            cases=_text(dynamic.get("case_count", 0)),
+                            anomalies=_text(dynamic.get("anomaly_count", 0)),
+                            reset=_text(dynamic.get("reset_completed", False)),
+                        )
+                        if dynamic
+                        else "未执行"
+                    )
+                ),
+                para(
+                    "修复方向："
+                    + _text(
+                        assessment.get("remediation_summary")
+                        or remediation.get("agent_summary")
+                        or remediation.get("priority_label")
+                    )
+                ),
+            ]
+            chain_data = [[para("阶段", muted), para("Evidence ID", muted), para("来源", muted)]]
+            for raw_item in _list(dossier.get("evidence_chain")):
+                item = _mapping(raw_item)
+                chain_data.append(
+                    [
+                        para(item.get("stage"), muted),
+                        para(item.get("evidence_id"), muted),
+                        para(item.get("source"), muted),
+                    ]
+                )
+            if len(chain_data) > 1:
+                block.append(table(chain_data, [55 * mm, 65 * mm, 40 * mm]))
+            story.extend([KeepTogether(block), Spacer(1, 4 * mm)])
+
+    story.append(para("漏洞发现与独立复核", heading))
 
     finding_rows = _list(report.get("findings"))
     if not finding_rows:
@@ -313,7 +441,7 @@ def write_report_pdf(
         canvas.setAuthor("VulnAgent")
         canvas.setFont("STSong-Light", 7)
         canvas.setFillColor(colors.HexColor("#697386"))
-        canvas.drawString(18 * mm, 9 * mm, f"VulnAgent · Task {_text(task.get('task_id'))}")
+        canvas.drawString(18 * mm, 9 * mm, "仅用于安全审计与防御研究 · 教学实验")
         canvas.drawRightString(A4[0] - 18 * mm, 9 * mm, f"第 {document.page} 页")
         canvas.restoreState()
 

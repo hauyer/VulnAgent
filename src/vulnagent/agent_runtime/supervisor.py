@@ -9,13 +9,18 @@ from .state import RuntimeState
 class Supervisor:
     """Choose the next specialized agent without executing capabilities."""
 
-    def __init__(self, max_analysis_retries: int = 1) -> None:
+    def __init__(
+        self,
+        max_analysis_retries: int = 1,
+        available_routes: set[str] | None = None,
+    ) -> None:
         if max_analysis_retries < 0:
             raise ValueError(
                 "max_analysis_retries cannot be negative"
             )
 
         self.max_analysis_retries = max_analysis_retries
+        self.available_routes = available_routes
     def decide(self, task: Task, context: AnalysisContext, state: RuntimeState) -> RouteDecision:
         """Select a structured route from task type and accumulated results."""
         current = state["current_agent"]
@@ -23,9 +28,43 @@ class Supervisor:
         if current is None:
             return RouteDecision(AgentRoute.PLANNER, "initialize a structured plan")
         if current == AgentRoute.PLANNER.value:
-            route = AgentRoute.BINARY_ANALYSIS if task.target.target_type is TargetType.BINARY else AgentRoute.SOURCE_ANALYSIS
+            route = (
+                AgentRoute.PROGRAM_RESTORATION
+                if self._protected_binary(task) and self._available(AgentRoute.PROGRAM_RESTORATION)
+                else AgentRoute.BINARY_ANALYSIS
+                if task.target.target_type is TargetType.BINARY
+                else AgentRoute.SOURCE_ANALYSIS
+            )
             return RouteDecision(route, "route by target type")
-        if current in {AgentRoute.SOURCE_ANALYSIS.value, AgentRoute.BINARY_ANALYSIS.value}:
+        if current == AgentRoute.PROGRAM_RESTORATION.value:
+            return RouteDecision(AgentRoute.BINARY_ANALYSIS, "restoration evidence is ready for binary analysis")
+        if (
+            current == AgentRoute.BINARY_ANALYSIS.value
+            and self._protected_binary(task)
+            and self._available(AgentRoute.CODE_DEOBFUSCATION)
+        ):
+            if history.count(AgentRoute.CODE_DEOBFUSCATION.value) < history.count(AgentRoute.BINARY_ANALYSIS.value):
+                return RouteDecision(AgentRoute.CODE_DEOBFUSCATION, "recover protected code semantics before vulnerability verification")
+        if (
+            current == AgentRoute.SOURCE_ANALYSIS.value
+            and self._available(AgentRoute.CODE_AUDIT)
+            and history.count(AgentRoute.CODE_AUDIT.value)
+            < history.count(AgentRoute.SOURCE_ANALYSIS.value)
+            and any(
+                item.metadata.get("audit_domain") == "software_code"
+                for item in context.findings
+            )
+        ):
+            return RouteDecision(
+                AgentRoute.CODE_AUDIT,
+                "software-code candidates require bounded semantic review",
+            )
+        if current in {
+            AgentRoute.SOURCE_ANALYSIS.value,
+            AgentRoute.BINARY_ANALYSIS.value,
+            AgentRoute.CODE_DEOBFUSCATION.value,
+            AgentRoute.CODE_AUDIT.value,
+        }:
             if not context.findings:
                 return RouteDecision(AgentRoute.REPORT, "analysis completed without findings")
             if self._fuzz_requested(task, context) and AgentRoute.FUZZ.value not in history:
@@ -89,6 +128,19 @@ class Supervisor:
         if current == AgentRoute.REPORT.value:
             return RouteDecision(AgentRoute.FINISH, "report generated")
         return RouteDecision(AgentRoute.REPORT, "unknown runtime state", fallback_used=True)
+
+    @staticmethod
+    def _protected_binary(task: Task) -> bool:
+        if task.target.target_type is not TargetType.BINARY:
+            return False
+        metadata = task.target.metadata
+        return str(metadata.get("test_lab_category", "")).casefold() in {
+            "packed_binary",
+            "obfuscated_binary",
+        } or str(task.target.file_format or "").casefold() in {"dex", "apk"}
+
+    def _available(self, route: AgentRoute) -> bool:
+        return self.available_routes is None or route.value in self.available_routes
 
     @staticmethod
     def _fuzz_requested(task: Task, context: AnalysisContext) -> bool:

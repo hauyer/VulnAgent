@@ -6,8 +6,8 @@ a single source file it:
 
 1. walks the project with conservative ignore rules and resource limits;
 2. recognizes the languages present (see ``languages.py``);
-3. structurally parses the supported languages (Python today) and keeps the
-   remaining recognised files indexed without pretending they were parsed;
+3. structurally parses Python plus C/C++/Go and keeps the remaining recognised
+   files indexed without pretending they were parsed;
 4. returns one standard ``SourceAnalysisResult`` aggregating files, symbols,
    dependencies, a basic call graph and rich ``metadata`` (per-language
    counts, unsupported languages, parse errors, scan limits).
@@ -35,12 +35,13 @@ from .languages import (
     is_ignored_directory,
     recognized_languages,
 )
+from .native_parser import NativeSourceParseError, NativeSourceParser
 from .python_parser import parse_python_file
 from .python_resolver import resolve_call_graph_for_files
 
 LOGGER = logging.getLogger(__name__)
 
-#: Languages whose structure is parsed into symbols in V0.3 (only Python).
+#: Languages whose structure is parsed into symbols by the project parser.
 SUPPORTED_LANGUAGES: frozenset[str] = frozenset(
     spec.identifier
     for spec in recognized_languages()
@@ -179,6 +180,8 @@ class SourceProjectParser:
         call_graph: dict[str, set[str]] = {}
         parsed_file_count = 0
         parsed_files: list[Any] = []
+        native_files: dict[str, dict[str, Any]] = {}
+        native_parser = NativeSourceParser()
 
         counts: dict[str, int] = {}
         for source_file in files:
@@ -188,25 +191,91 @@ class SourceProjectParser:
             if not source_file.structurally_parsed:
                 continue
 
-            parsed = parse_python_file(
-                source_file.real_path,
-                source_file.displayed_path,
-            )
-            if parsed.error is not None:
-                LOGGER.debug(
-                    "Unable to parse %s: %s",
+            if source_file.language == "python":
+                parsed = parse_python_file(
                     source_file.real_path,
-                    parsed.error.get("message"),
+                    source_file.displayed_path,
                 )
-                parse_errors.append(parsed.error)
+                if parsed.error is not None:
+                    LOGGER.debug(
+                        "Unable to parse %s: %s",
+                        source_file.real_path,
+                        parsed.error.get("message"),
+                    )
+                    parse_errors.append(parsed.error)
+                    continue
+
+                parsed_file_count += 1
+                parsed_files.append(parsed)
+                symbols.extend(parsed.symbols)
+                dependencies.update(parsed.dependencies)
+                for caller, callees in parsed.call_graph.items():
+                    call_graph.setdefault(caller, set()).update(callees)
+                continue
+
+            try:
+                native = native_parser.parse_file(
+                    source_file.real_path,
+                    source_file.displayed_path,
+                    source_file.language,
+                )
+            except NativeSourceParseError as error:
+                LOGGER.debug("Unable to parse %s: %s", source_file.real_path, error)
+                parse_errors.append(
+                    {
+                        "file": source_file.displayed_path,
+                        "error_type": type(error).__name__,
+                        "message": str(error),
+                        "line": None,
+                        "offset": None,
+                    }
+                )
                 continue
 
             parsed_file_count += 1
-            parsed_files.append(parsed)
-            symbols.extend(parsed.symbols)
-            dependencies.update(parsed.dependencies)
-            for caller, callees in parsed.call_graph.items():
-                call_graph.setdefault(caller, set()).update(callees)
+            native_files[source_file.displayed_path] = native.to_metadata()
+            dependencies.update(native.dependencies)
+            for function in native.functions:
+                symbols.append(
+                    {
+                        "name": function.name,
+                        "qualified_name": function.qualified_name,
+                        "kind": function.kind,
+                        "file": source_file.displayed_path,
+                        "line": function.line_start,
+                        "end_line": function.line_end,
+                        "column": function.column,
+                        "is_async": False,
+                        "decorators": [],
+                        "parameters": [
+                            {
+                                "name": parameter.get("name", "<anonymous>"),
+                                "kind": "positional_or_keyword",
+                                "has_default": False,
+                                "annotation": parameter.get("type") or None,
+                            }
+                            for parameter in function.parameters
+                        ],
+                        "return_annotation": None,
+                        "language": source_file.language,
+                    }
+                )
+                call_graph.setdefault(function.qualified_name, set()).update(
+                    function.callees
+                )
+            if native.has_syntax_error:
+                parse_errors.append(
+                    {
+                        "file": source_file.displayed_path,
+                        "error_type": "TreeSitterSyntaxError",
+                        "message": (
+                            "Tree-sitter recovered a partial syntax tree; "
+                            "derived facts may be incomplete."
+                        ),
+                        "line": None,
+                        "offset": None,
+                    }
+                )
 
         symbols.sort(
             key=lambda symbol: (
@@ -265,6 +334,17 @@ class SourceProjectParser:
                 "imports": {
                     parsed_file.displayed_path: parsed_file.imports
                     for parsed_file in parsed_files
+                },
+                "native_analysis": {
+                    "schema_version": "1.0",
+                    "engine": "tree_sitter",
+                    "languages": sorted(NativeSourceParser.supported_languages),
+                    "files": native_files,
+                    "limitations": [
+                        "statement-level intraprocedural CFG",
+                        "no preprocessor expansion or compiler type resolution",
+                        "no target compilation or execution",
+                    ],
                 },
                 "entry_points": entry_points,
                 "error_count": len(parse_errors),

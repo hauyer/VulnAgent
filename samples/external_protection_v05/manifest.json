@@ -1,0 +1,308 @@
+{
+  "schema_version": "1.0",
+  "suite_id": "vulnagent-external-protection-v05-20260912",
+  "created_at": "2026-09-12",
+  "purpose": "Authorized static-analysis and restoration evaluation for VulnAgent V0.5.",
+  "safety": {
+    "contains_known_malware": false,
+    "sample_execution_allowed_by_default": false,
+    "pe_elf_dynamic_environment": "offline disposable VM only",
+    "apk_dynamic_environment": "local emulator-* only",
+    "prohibited_uses": [
+      "license bypass",
+      "access-control bypass",
+      "analysis of software without authorization",
+      "real-device injection"
+    ]
+  },
+  "sources": [
+    {
+      "source_id": "upx-v5.2.0-win64",
+      "repository": "https://github.com/upx/upx",
+      "url": "https://github.com/upx/upx/releases/download/v5.2.0/upx-5.2.0-win64.zip",
+      "release_date": "2026-06-08",
+      "archive_sha256": "b471ebf1b7f20f4a89150264ed9a008a2a5bfd247f3c6d1184a75bb59ca08f5d",
+      "license": "GPL-2.0-or-later with UPX exception; see upx_5_2_0/tool/COPYING and LICENSE"
+    },
+    {
+      "source_id": "nsis-v3.12-portable",
+      "repository": "https://github.com/NSIS-Dev/release-data",
+      "url": "https://downloads.sourceforge.net/project/nsis/NSIS%203/3.12/nsis-3.12.zip?download=1",
+      "release_date": "2026-04-19",
+      "archive_sha256": "56581f90db321581c5381193d796fffcf2d24b2f8fed2160a6c6a3baa67f2c4f",
+      "compiler_sha256": "b043e554afefbfc56315669d0b4779793aeae67f0f2a7a790e2ea91f05298eff",
+      "license": "zlib/libpng"
+    },
+    {
+      "source_id": "quarkslab-obfuscation-dataset",
+      "repository": "https://github.com/quarkslab/diffing_obfuscation_dataset",
+      "commit": "7d9fc384f2cd2b68220bd811833af32085459c93",
+      "commit_date": "2026-01-15",
+      "license": "Upstream pyproject classifier says Apache Software License; dataset archive grant not separately stated",
+      "archives": [
+        {
+          "url": "https://obfuscation-dataset.s3.fr-par.scw.cloud/zlib/zlib-sources.zip",
+          "bytes": 1141907,
+          "upstream_md5": "ed9679a6cafc6486d3dde1fd101c0f70"
+        },
+        {
+          "url": "https://obfuscation-dataset.s3.fr-par.scw.cloud/zlib/obfuscated/ollvm/zlib_ollvm_CFF_10.zip",
+          "bytes": 6087098,
+          "upstream_md5": "94778ce6c6e8e70591d6dcb85f725739"
+        },
+        {
+          "url": "https://obfuscation-dataset.s3.fr-par.scw.cloud/zlib/obfuscated/ollvm/zlib_ollvm_opaque_10.zip",
+          "bytes": 6022852,
+          "upstream_md5": "3f705e1c68e969735ee81ac388747841"
+        },
+        {
+          "url": "https://obfuscation-dataset.s3.fr-par.scw.cloud/zlib/obfuscated/ollvm/zlib_ollvm_encodearith_10.zip",
+          "bytes": 5850378,
+          "upstream_md5": "fa78b885294516315dfac291601a26c8"
+        },
+        {
+          "url": "https://obfuscation-dataset.s3.fr-par.scw.cloud/zlib/obfuscated/tigress/zlib_tigress_virtualize_10.zip",
+          "bytes": 10950846,
+          "upstream_md5": "9841da45f6c9820d7232d5fae948f43e"
+        }
+      ]
+    },
+    {
+      "source_id": "owasp-mas-crackmes",
+      "repository": "https://github.com/OWASP/mas-crackmes",
+      "commit": "d27a4857b79289cdd88fda423f519f8cd4c42db1",
+      "commit_date": "2022-10-03",
+      "license": "LGPL-3.0"
+    },
+    {
+      "source_id": "xollvm-llvm22",
+      "repository": "https://github.com/und3ath/xollvm",
+      "commit": "17afc7ea885538c7724ec8baef566e85cf2878ff",
+      "commit_date": "2026-09-10",
+      "license": "Apache-2.0 WITH LLVM-exception"
+    }
+  ],
+  "samples": [
+    {
+      "sample_id": "upx520-benign-plain",
+      "pair_id": "upx-5.2.0-pe",
+      "state": "plain",
+      "path": "upx_5_2_0/bin/benign_cli_plain.exe",
+      "bytes": 53591,
+      "sha256": "f70fdedfa7f3ba549f01e115380a59db629d8367e3e0303f7d839180c82b8325",
+      "format": "PE",
+      "architecture": "x86-64",
+      "protection": "none",
+      "provenance": "Locally compiled from benign_cli.c with MinGW-w64 GCC"
+    },
+    {
+      "sample_id": "upx520-benign-packed",
+      "pair_id": "upx-5.2.0-pe",
+      "state": "packed",
+      "path": "upx_5_2_0/bin/benign_cli_upx_5.2.0.exe",
+      "bytes": 40791,
+      "sha256": "df5f4a204b03f7acaeacda3339e7c9e6427a2901715a9bb6c3cebeed256a28d5",
+      "format": "PE",
+      "architecture": "x86-64",
+      "protection": "UPX 5.2.0 -9",
+      "static_ground_truth": ["UPX0", "UPX1", "UPX2"],
+      "validation": "UPX 5.2.0 -t returned OK"
+    },
+    {
+      "sample_id": "nsis312-benign-level2",
+      "pair_id": "nsis-3.12-pe",
+      "state": "protected_container",
+      "path": "nsis_3_12/bin/benign_cli_nsis_3.12_setup.exe",
+      "bytes": 50316,
+      "sha256": "2db5a21f5ae1c724423c73d43aadf6182d92ece9e5f25beb6c2c09846ba18de5",
+      "format": "PE",
+      "architecture": "x86",
+      "protection": "NSIS 3.12 solid LZMA installer/container",
+      "static_ground_truth": [".ndata", "Nullsoft", "NSIS Error"],
+      "validation": "VulnAgent static classifier selected NSIS level 2 with confidence 0.85; target_executed=false",
+      "note": "NSIS is a compressed installer/container, categorized as level 2 by the current project teaching matrix; this does not claim cryptographic encryption."
+    },
+    {
+      "sample_id": "teaching-vm-plain",
+      "pair_id": "teaching-vm-pe",
+      "state": "plain",
+      "path": "teaching_vm/bin/teaching_vm_plain.exe",
+      "bytes": 54901,
+      "sha256": "5fffaef8a559630647024b98beadaf936b3d91778ff46f7d3f06a19f082c227c",
+      "format": "PE",
+      "architecture": "x86-64",
+      "protection": "none",
+      "provenance": "Locally compiled from teaching_vm_fixture.c with MinGW-w64 GCC 15.2.0"
+    },
+    {
+      "sample_id": "teaching-vm-level3",
+      "pair_id": "teaching-vm-pe",
+      "state": "virtualized",
+      "path": "teaching_vm/bin/teaching_vm_level3.exe",
+      "bytes": 58329,
+      "sha256": "1bcb126a47c29e562a37cc7177bc47be4640509d70e7d990a04a0b433ca6f030",
+      "format": "PE",
+      "architecture": "x86-64",
+      "protection": "VulnAgent deterministic teaching VM",
+      "static_ground_truth": [".vcode", ".vmdata", "VulnAgent Teaching VM", "vm_dispatch"],
+      "validation": "VulnAgent static classifier selected Teaching VM level 3 with confidence 0.85; target_executed=false"
+    },
+    {
+      "sample_id": "string-obfuscation-plain",
+      "pair_id": "string-obfuscation-pe",
+      "state": "plain",
+      "path": "string_obfuscation/bin/string_plain.exe",
+      "bytes": 55269,
+      "sha256": "13d02e346cd722abfb10a1fc222c44740d942ce4e21899d99da0f395c1875bcf",
+      "format": "PE",
+      "architecture": "x86-64",
+      "protection": "none",
+      "provenance": "Locally compiled from string_fixture.c with MinGW-w64 GCC 15.2.0"
+    },
+    {
+      "sample_id": "string-xor-base64-obfuscated",
+      "pair_id": "string-obfuscation-pe",
+      "state": "obfuscated",
+      "path": "string_obfuscation/bin/string_xor_base64_obfuscated.exe",
+      "bytes": 55891,
+      "sha256": "e128cd5c3a11ca2914244e539b47e5ba5f57e36ef703eca27c2f1fb1de1eb6da",
+      "format": "PE",
+      "architecture": "x86-64",
+      "protection": "deterministic Base64 plus XOR string obfuscation fixture",
+      "static_ground_truth": [".obfstr", "base64", "xor key 0x5a"],
+      "validation": "StaticDeobfuscationEngine detected string_encryption and recovered the expected Base64 plaintext; target_executed=false"
+    },
+    {
+      "sample_id": "zlib-clang14-o0-plain",
+      "pair_id": "zlib-clang14-obfuscation",
+      "state": "plain",
+      "path": "quarkslab_obfuscation_dataset/zlib/plain/zlib_clang14_x64_O0.exe",
+      "bytes": 117128,
+      "sha256": "f652bd0737b089e46ae6a0fa5757ba7b4e5168ddf34eca894a7ff6082c12bbec",
+      "format": "ELF",
+      "architecture": "x86-64",
+      "protection": "none",
+      "note": "Upstream filename ends in .exe; magic is ELF."
+    },
+    {
+      "sample_id": "zlib-ollvm14-cff10-seed1-o0",
+      "pair_id": "zlib-clang14-obfuscation",
+      "state": "obfuscated",
+      "path": "quarkslab_obfuscation_dataset/zlib/ollvm14/cff_seed1_o0/zlib_ollvm_clang14_x64_CFF_10_1_O0.exe",
+      "bytes": 121224,
+      "sha256": "dbbec59f9fb3a9201a1dd403bd2b4717ed5d43683c97dc39bac20086b657253e",
+      "format": "ELF",
+      "architecture": "x86-64",
+      "protection": "OLLVM LLVM-14 control-flow flattening; 10 percent functions; seed 1; O0",
+      "ground_truth_json": "quarkslab_obfuscation_dataset/zlib/ollvm14/cff_seed1_o0/zlib_ollvm_clang14_x64_CFF_10_1_O0.json"
+    },
+    {
+      "sample_id": "zlib-ollvm14-opaque10-seed1-o0",
+      "pair_id": "zlib-clang14-obfuscation",
+      "state": "obfuscated",
+      "path": "quarkslab_obfuscation_dataset/zlib/ollvm14/opaque_seed1_o0/zlib_ollvm_clang14_x64_opaque_10_1_O0.exe",
+      "bytes": 125320,
+      "sha256": "5b335017fb2d6e6424caf0484fcaa775b351009062e4a69e22e26cbf5b5f12fc",
+      "format": "ELF",
+      "architecture": "x86-64",
+      "protection": "OLLVM LLVM-14 bogus control flow / opaque predicates; 10 percent functions; seed 1; O0",
+      "ground_truth_json": "quarkslab_obfuscation_dataset/zlib/ollvm14/opaque_seed1_o0/zlib_ollvm_clang14_x64_opaque_10_1_O0.json"
+    },
+    {
+      "sample_id": "zlib-ollvm14-encodearith10-seed1-o0",
+      "pair_id": "zlib-clang14-obfuscation",
+      "state": "obfuscated",
+      "path": "quarkslab_obfuscation_dataset/zlib/ollvm14/encodearith_seed1_o0/zlib_ollvm_clang14_x64_encodearith_10_1_O0.exe",
+      "bytes": 117128,
+      "sha256": "19ea7765d58f29de04a39368246b1ed42b154a67921f6887d6891623d789379b",
+      "format": "ELF",
+      "architecture": "x86-64",
+      "protection": "OLLVM LLVM-14 arithmetic encoding / instruction substitution; 10 percent functions; seed 1; O0",
+      "ground_truth_json": "quarkslab_obfuscation_dataset/zlib/ollvm14/encodearith_seed1_o0/zlib_ollvm_clang14_x64_encodearith_10_1_O0.json"
+    },
+    {
+      "sample_id": "zlib-gcc-o0-plain",
+      "pair_id": "zlib-gcc-tigress3",
+      "state": "plain",
+      "path": "quarkslab_obfuscation_dataset/zlib/plain/zlib_gcc_x64_O0.exe",
+      "bytes": 109016,
+      "sha256": "4b56c345a3fa4080afebb4ee3b8e8579276e7aedb4f101bc2eaa4a2d60e17184",
+      "format": "ELF",
+      "architecture": "x86-64",
+      "protection": "none",
+      "note": "Upstream filename ends in .exe; magic is ELF."
+    },
+    {
+      "sample_id": "zlib-tigress3-virtualize10-seed1-o0",
+      "pair_id": "zlib-gcc-tigress3",
+      "state": "obfuscated",
+      "path": "quarkslab_obfuscation_dataset/zlib/tigress3/virtualize_seed1_o0/zlib_tigress_gcc_x64_virtualize_10_1_O0.exe",
+      "bytes": 217352,
+      "sha256": "11ff5e0d429185f74fb929fd950c6bd827025671a98daf3e2cede66bfc789e14",
+      "format": "ELF",
+      "architecture": "x86-64",
+      "protection": "Tigress 3 virtualization; 10 percent functions; seed 1; O0",
+      "ground_truth_json": "quarkslab_obfuscation_dataset/zlib/tigress3/virtualize_seed1_o0/zlib_tigress_gcc_x64_virtualize_10_1_O0.json"
+    },
+    {
+      "sample_id": "owasp-uncrackable-android-level1",
+      "pair_id": null,
+      "state": "teaching_challenge",
+      "path": "owasp_mas_crackmes/android/UnCrackable-Level1.apk",
+      "bytes": 66651,
+      "sha256": "1da8bf57d266109f9a07c01bf7111a1975ce01f190b9d914bcd3ae3dbef96f21",
+      "format": "APK/ZIP",
+      "architecture": "Android DEX",
+      "static_ground_truth": ["classes.dex"],
+      "protection": "OWASP mobile reverse-engineering teaching challenge",
+      "note": "Not labeled as a commercial Android protector sample."
+    },
+    {
+      "sample_id": "owasp-uncrackable-android-level2",
+      "pair_id": null,
+      "state": "teaching_challenge",
+      "path": "owasp_mas_crackmes/android/UnCrackable-Level2.apk",
+      "bytes": 899134,
+      "sha256": "0e154f2acb99c88795849117ea178ad2d63cf1b608525b21973cd498e9a5d1a0",
+      "format": "APK/ZIP",
+      "architecture": "Android DEX with native components",
+      "static_ground_truth": ["classes.dex"],
+      "protection": "OWASP mobile reverse-engineering teaching challenge",
+      "note": "Not labeled as a commercial Android protector sample."
+    }
+  ],
+  "source_fixtures": [
+    {
+      "fixture_id": "benign-cli-upx-baseline",
+      "path": "upx_5_2_0/source/benign_cli.c",
+      "sha256": "84753b0bd11849b785639b2585a653ddbd9c555233e497e8de0fdd9c9810115b",
+      "build_status": "compiled_locally_not_executed"
+    },
+    {
+      "fixture_id": "nsis-3.12-benign-container",
+      "path": "nsis_3_12/source/benign_fixture.nsi",
+      "sha256": "b409f0a284e5844aaa585735ec703ef9835abf49425f2f1a28a9a0c1259b0d2a",
+      "build_status": "compiled_with_official_nsis_3.12_not_executed"
+    },
+    {
+      "fixture_id": "teaching-vm-level3-pair",
+      "path": "teaching_vm/source/teaching_vm_fixture.c",
+      "sha256": "0d1bc258524ac8ba2b7ca8759189eb22f9248c96b31d9e5fbe26ae1e71561b10",
+      "build_status": "plain_and_use_teaching_vm_variants_compiled_locally_not_executed"
+    },
+    {
+      "fixture_id": "string-xor-base64-pair",
+      "path": "string_obfuscation/source/string_fixture.c",
+      "sha256": "adb6cf307ee9170892fb83ac6000fb4544f2d1636140bf51f82219039c20156e",
+      "build_status": "plain_and_use_string_obfuscation_variants_compiled_locally_not_executed"
+    },
+    {
+      "fixture_id": "xollvm-llvm22-safe-four-pass",
+      "path": "xollvm_llvm22/source_fixture/modern_obfuscation_fixture.c",
+      "sha256": "4a60fbece7bb4b222ed619ceb6d6566b58bf16fccef0abe5ba0521360f63cebe",
+      "requested_passes": ["substitution", "bcf", "flattening", "strenc"],
+      "excluded_passes": ["vm", "anti-debug", "adec"],
+      "build_status": "source_only_not_executed"
+    }
+  ]
+}

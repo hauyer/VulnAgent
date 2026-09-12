@@ -1,7 +1,9 @@
 .env
 node_modules/
+.npm-cache/
 dist/
 .venv/
+.venv-codex/
 __pycache__/
 .pytest_cache/
 .pytest-tmp/
@@ -34,9 +36,25 @@ artifacts/fuzz/
 artifacts/uploads/
 artifacts/experiments/
 artifacts/demos/
+artifacts/test-lab/
+artifacts/controlled-poc/
+artifacts/reverse/
+artifacts/review-annotations.json
 artifacts/*.db
 artifacts/*.db-shm
 artifacts/*.db-wal
+
+# Local/open-research sample packs may contain compiled or redistribution-
+# restricted material. Keep manifests, licenses and self-authored fixtures in
+# source control; obtain the binary/data payloads separately when authorized.
+samples/external_fuzz_demo/bin/
+samples/external_protection_v05/**/bin/
+samples/external_protection_v05/**/*.exe
+samples/external_protection_v05/**/*.apk
+samples/external_protection_v05/quarkslab_obfuscation_dataset/
+samples/external_protection_v05/upx_5_2_0/tool/
+samples/external_protection_v05/xollvm_llvm22/
+samples/external_protection_v05/licenses/QUARKSLAB_*
 
 
 # scratch comparison copy

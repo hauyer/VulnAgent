@@ -26,6 +26,11 @@ class OpenAICompatibleLLM(BaseLLM):
     provider = "openai-compatible"
     max_tokens_field = "max_tokens"
     fixed_temperature: float | None = None
+    # Some providers fix ``temperature`` server-side and reject explicit values.
+    omit_temperature: bool = False
+    # Some providers replace the ``thinking`` switch with their own reasoning
+    # controls and reject the cross-provider ``thinking`` field entirely.
+    omit_thinking: bool = False
     rate_limit_retry_delays: tuple[float, ...] = ()
     min_request_interval_seconds = 0.0
 
@@ -99,17 +104,18 @@ class OpenAICompatibleLLM(BaseLLM):
             "model": self.model,
             "messages": messages,
             "stream": False,
-            "temperature": (
+        }
+        if not self.omit_temperature:
+            payload["temperature"] = (
                 self.fixed_temperature
                 if self.fixed_temperature is not None
                 else requested_temperature
-            ),
-        }
+            )
         payload[self.max_tokens_field] = int(kwargs.get("max_tokens", 512))
         if kwargs.get("response_format") is not None:
             payload["response_format"] = kwargs["response_format"]
         thinking = kwargs.get("thinking")
-        if thinking is not None:
+        if thinking is not None and not self.omit_thinking:
             if (
                 not isinstance(thinking, dict)
                 or thinking.get("type") not in {"enabled", "disabled"}
@@ -258,13 +264,20 @@ class GLMAdapter(OpenAICompatibleLLM):
 
 
 class KimiAdapter(OpenAICompatibleLLM):
-    """Moonshot Kimi K2.x chat-completion adapter."""
+    """Moonshot Kimi K3 chat-completion adapter.
+
+    Kimi K3 (platform.kimi.com, ``api.moonshot.cn/v1``) fixes ``temperature``
+    at 1.0 and ``top_p`` at 0.95, and replaces the older ``thinking`` switch
+    with the ``reasoning_effort`` control while keeping preserved thinking
+    always on.  This adapter therefore omits both fields instead of sending
+    the cross-provider benchmark's temperature=0 / thinking-disabled values,
+    which K3 would otherwise reject.
+    """
 
     provider = "kimi"
     max_tokens_field = "max_completion_tokens"
-    # Kimi K2.6 rejects every other value, including the cross-provider
-    # benchmark's deterministic temperature=0 request.
-    fixed_temperature = 0.6
+    omit_temperature = True
+    omit_thinking = True
     # Entry-tier Moonshot accounts may expose a low requests-per-minute limit.
     # Honor Retry-After when present and otherwise use bounded backoff.
     rate_limit_retry_delays = (20.0, 40.0, 60.0)

@@ -12,6 +12,7 @@ construction is easier to test, review and reproduce.
 """
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import cast
 
 from vulnagent.agent_runtime import (
@@ -27,8 +28,11 @@ from vulnagent.agent_runtime.errors import (
 )
 from vulnagent.agents import (
     BinaryAnalysisAgent,
+    CodeAuditAgent,
+    CodeDeobfuscationAgent,
     FuzzAgent,
     PlannerAgent,
+    ProgramRestorationAgent,
     ReportAgent,
     ReviewerAgent,
     SourceAuditAgent,
@@ -36,9 +40,17 @@ from vulnagent.agents import (
 )
 from vulnagent.agents.registry import AgentRegistry
 from vulnagent.analyzers.binary.reverse import (
+    BinaryReverseWorkflow,
     MockBinaryReverseAnalyzer,
+    Radare2Adapter,
     StaticBinaryReverseAnalyzer,
+    UpxAdapter,
 )
+from vulnagent.analyzers.binary.deobfuscation import (
+    SemanticRecoveryEnhancer,
+    StaticDeobfuscationEngine,
+)
+from vulnagent.analyzers.binary.restoration import ProgramRestorationEngine
 from vulnagent.analyzers.binary.logic import LogicAnalyzer, MockLogicAnalyzer
 from vulnagent.analyzers.binary.obfuscation import (
     MockObfuscationAnalyzer,
@@ -46,7 +58,7 @@ from vulnagent.analyzers.binary.obfuscation import (
 )
 from vulnagent.analyzers.source.audit import (
     MockSourceAuditor,
-    PythonSourceAuditor,
+    MultiLanguageSourceAuditor,
 )
 from vulnagent.analyzers.source.parser import (
     MockSourceParser,
@@ -87,6 +99,7 @@ from vulnagent.verification.evidence_verifier import EvidenceVerifier
 MOCK_PROFILE = "mock"
 V03_SOURCE_PROFILE = "v03-source"
 SUPPORTED_PROFILES = frozenset({MOCK_PROFILE, V03_SOURCE_PROFILE})
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
 
 @dataclass(
@@ -131,22 +144,38 @@ def build_mock_capabilities() -> CapabilityBundle:
     )
 
 
-def build_v03_source_capabilities() -> CapabilityBundle:
+def build_v03_source_capabilities(settings: Settings | None = None) -> CapabilityBundle:
     """Build real Source/Verification/Report capabilities for V0.3.
 
     Binary inspection is bounded and non-executing. Fuzzing uses the existing
     authorization-gated local controlled executor and remains opt-in.
     """
 
+    resolved_settings = settings if settings is not None else get_settings()
+
+    def resolve(value: str) -> Path:
+        candidate = Path(value)
+        return candidate if candidate.is_absolute() else REPOSITORY_ROOT / candidate
+
     return CapabilityBundle(
         source_parser=SourceProjectParser(),
-        source_auditor=PythonSourceAuditor(),
+        source_auditor=MultiLanguageSourceAuditor(),
         binary_analyzer=StaticBinaryReverseAnalyzer(),
         binary_logic_analyzer=LogicAnalyzer(),
         binary_obfuscation_analyzer=ObfuscationAnalyzer(),
         fuzz_engine=ControlledFuzzEngine(),
         verifier=EvidenceVerifier(),
         report_generator=StructuredReportGenerator(),
+        program_restorer=ProgramRestorationEngine(
+            REPOSITORY_ROOT / "artifacts" / "restoration",
+            static_unpacker=UpxAdapter(
+                executable=str(resolve(resolved_settings.binary_upx_path)),
+                timeout_seconds=resolved_settings.binary_reverse_timeout_seconds,
+            ),
+            timeout_seconds=resolved_settings.binary_reverse_timeout_seconds,
+        ),
+        code_deobfuscator=StaticDeobfuscationEngine(),
+        code_audit_enabled=True,
     )
 
 
@@ -222,6 +251,27 @@ def build_tool_registry(
         ]
     )
 
+    if capabilities.program_restorer is not None:
+        registry.register(
+            ToolSpec(
+                name="binary.restore",
+                description="Classify and restore an authorized protected program",
+                adapter=capabilities.program_restorer.restore,
+                owner="P4",
+                capability_type="binary_restoration",
+            )
+        )
+    if capabilities.code_deobfuscator is not None:
+        registry.register(
+            ToolSpec(
+                name="binary.deobfuscate",
+                description="Recover OLLVM-style control flow, instructions and strings",
+                adapter=capabilities.code_deobfuscator.restore,
+                owner="P5",
+                capability_type="binary_semantics",
+            )
+        )
+
     return registry
 def validate_tool_registry(
     registry: ToolRegistry,
@@ -253,6 +303,7 @@ def validate_tool_registry(
 def build_agent_registry(
     capabilities: CapabilityBundle,
     llm: BaseLLM | None = None,
+    binary_reverse_workflow: BinaryReverseWorkflow | None = None,
 ) -> AgentRegistry:
     """Build runtime agents from injected capability Protocols.
 
@@ -265,7 +316,10 @@ def build_agent_registry(
     registry.register_many(
         {
             AgentRoute.PLANNER.value:
-                PlannerAgent(llm),
+                PlannerAgent(
+                    llm,
+                    code_audit_enabled=capabilities.code_audit_enabled,
+                ),
 
             AgentRoute.SOURCE_ANALYSIS.value:
                 SourceAuditAgent(
@@ -278,6 +332,7 @@ def build_agent_registry(
                     capabilities.binary_analyzer,
                     capabilities.binary_logic_analyzer,
                     capabilities.binary_obfuscation_analyzer,
+                    binary_reverse_workflow,
                 ),
 
             AgentRoute.FUZZ.value:
@@ -299,6 +354,25 @@ def build_agent_registry(
                 ),
         }
     )
+
+    if capabilities.program_restorer is not None:
+        registry.register(
+            ProgramRestorationAgent(capabilities.program_restorer),
+            key=AgentRoute.PROGRAM_RESTORATION.value,
+        )
+    if capabilities.code_audit_enabled:
+        registry.register(
+            CodeAuditAgent(llm),
+            key=AgentRoute.CODE_AUDIT.value,
+        )
+    if capabilities.code_deobfuscator is not None:
+        registry.register(
+            CodeDeobfuscationAgent(
+                capabilities.code_deobfuscator,
+                SemanticRecoveryEnhancer(llm),
+            ),
+            key=AgentRoute.CODE_DEOBFUSCATION.value,
+        )
 
     return registry
 
@@ -327,6 +401,7 @@ def build_application(
     tool_registry: ToolRegistry | None = None,
     runtime_policy: RuntimePolicy | None = None,
     context_repository: ContextRepository | None = None,
+    binary_reverse_workflow: BinaryReverseWorkflow | None = None,
 ) -> ApplicationServices:
     """Compose a complete VulnAgent application dependency graph.
 
@@ -400,6 +475,7 @@ def build_application(
         else build_agent_registry(
             capabilities,
             resolved_llm,
+            binary_reverse_workflow,
         )
     )
 
@@ -461,9 +537,39 @@ def build_v03_source_application(
 ) -> ApplicationServices:
     """Build the canonical V0.3 source-analysis application."""
 
+    resolved_settings = settings if settings is not None else get_settings()
+    reverse_workflow = (
+        build_binary_reverse_workflow(resolved_settings)
+        if resolved_settings.binary_reverse_enabled
+        else None
+    )
     return build_application(
-        build_v03_source_capabilities(),
-        settings=settings,
+        build_v03_source_capabilities(resolved_settings),
+        settings=resolved_settings,
+        binary_reverse_workflow=reverse_workflow,
+    )
+
+
+def build_binary_reverse_workflow(settings: Settings) -> BinaryReverseWorkflow:
+    """Compose the offline reverse tools from repository-relative settings."""
+
+    def resolve(value: str) -> Path:
+        candidate = Path(value)
+        return candidate if candidate.is_absolute() else REPOSITORY_ROOT / candidate
+
+    timeout = settings.binary_reverse_timeout_seconds
+    return BinaryReverseWorkflow(
+        resolve(settings.binary_reverse_output_dir),
+        inspector=Radare2Adapter(
+            executable=str(resolve(settings.binary_radare2_path)),
+            timeout_seconds=timeout,
+            max_functions=settings.binary_reverse_max_functions,
+            max_pseudocode_chars=settings.binary_reverse_max_pseudocode_chars,
+        ),
+        unpacker=UpxAdapter(
+            executable=str(resolve(settings.binary_upx_path)),
+            timeout_seconds=timeout,
+        ),
     )
 
 

@@ -1,0 +1,183 @@
+schema_version: "1.0"
+library_id: "vulnagent-software-code-rules"
+description: "C/C++/Go 本地防御性静态审计规则；所有命中均为待独立复核候选。"
+safety:
+  defensive_only: true
+  forbidden_outputs: [poc, exploit, attack_payload, bypass_steps]
+
+rules:
+  - rule_id: "VA-NATIVE-MEM-001"
+    name: "无边界字符串写入或可控拷贝长度"
+    description: "识别 strcpy、sprintf、gets 等无容量约束调用，以及长度受外部输入影响且缺少上限检查的 memcpy。"
+    vulnerability_type: "buffer_overflow"
+    cwe_id: "CWE-120"
+    languages: [c, cpp]
+    match:
+      node_types: [call_expression]
+      callee_any: [strcpy, strcat, sprintf, vsprintf, gets, memcpy, memmove]
+      all:
+        - kind: "external_input_reaches_copy"
+          source_kinds: [api_parameter, network_input, file_input]
+        - kind: "missing_dominating_guard"
+          guard_kinds: [destination_capacity_check, source_length_check]
+    severity: "HIGH"
+    confidence: 0.86
+    remediation:
+      summary: "使用带容量参数的接口，并在写入前校验源长度与目标容量。"
+      actions:
+        - "显式记录目标缓冲区容量并预留字符串终止符空间。"
+        - "将拷贝长度限制在目标容量以内。"
+        - "在错误路径中安全返回并保留脱敏日志。"
+
+  - rule_id: "VA-NATIVE-INT-001"
+    name: "内存大小或下标算术可能发生整数边界异常"
+    description: "识别受外部输入影响的乘法、加减法或移位结果进入分配大小或下标计算且缺少范围保护。"
+    vulnerability_type: "integer_overflow"
+    cwe_id: "CWE-190"
+    languages: [c, cpp, go]
+    match:
+      node_types: [call_expression, index_expression]
+      callee_any: [malloc, calloc, realloc, aligned_alloc, make]
+      all:
+        - kind: "tainted_arithmetic"
+          operators: ["*", "+", "-", "<<"]
+        - kind: "missing_dominating_guard"
+          guard_kinds: [range_check, checked_multiplication, negative_value_check]
+    severity: "HIGH"
+    confidence: 0.82
+    remediation:
+      summary: "计算分配大小或下标前执行上下限检查与安全算术检查。"
+      actions:
+        - "拒绝负数和超过业务上限的计数。"
+        - "乘法前检查最大值除以元素大小的边界。"
+        - "分配后检查失败状态并安全释放已获得资源。"
+
+  - rule_id: "VA-NATIVE-BOUNDS-001"
+    name: "外部可控数组或切片下标缺少范围检查"
+    description: "识别 API 参数或输入数据直接作为数组、指针或切片下标且缺少完整上下界检查。"
+    vulnerability_type: "array_out_of_bounds"
+    cwe_id: "CWE-129"
+    languages: [c, cpp, go]
+    match:
+      node_types: [index_expression, subscript_expression]
+      all:
+        - kind: "index_tainted"
+          source_kinds: [api_parameter, network_input, file_input]
+        - kind: "missing_dominating_guard"
+          guard_kinds: [non_negative_check, index_less_than_length]
+    severity: "HIGH"
+    confidence: 0.82
+    remediation:
+      summary: "访问容器前同时检查下界和严格上界。"
+      actions:
+        - "确认下标不小于零。"
+        - "确认下标严格小于容器实际长度。"
+
+  - rule_id: "VA-NATIVE-INPUT-001"
+    name: "敏感操作前缺少输入校验"
+    description: "识别 API 或本地输入到达拷贝、分配和下标操作前未观察到类型、长度、符号或范围检查。"
+    vulnerability_type: "input_validation_missing"
+    cwe_id: "CWE-20"
+    languages: [c, cpp, go]
+    match:
+      node_types: [call_expression, index_expression]
+      all:
+        - kind: "source_is_external"
+          source_kinds: [api_parameter, network_input, file_input, environment_input]
+        - kind: "missing_dominating_guard"
+          guard_kinds: [type_check, length_check, range_check, sign_check]
+    severity: "MEDIUM"
+    confidence: 0.74
+    remediation:
+      summary: "在信任边界集中校验输入，并在敏感操作前再次确认约束。"
+      actions:
+        - "校验类型、长度、范围和符号。"
+        - "为外部输入设置明确业务上限。"
+        - "校验失败时使用安全返回路径。"
+
+  - rule_id: "VA-NATIVE-CONFIG-001"
+    name: "配置修改接口缺少访问控制检查"
+    description: "识别服务处理函数调用配置修改操作，但未观察到身份、权限或管理员角色检查。"
+    vulnerability_type: "configuration_authorization_missing"
+    cwe_id: "CWE-863"
+    languages: [c, cpp, go]
+    match:
+      node_types: [call_expression]
+      callee_any: [SetConfig, UpdateConfig, ApplyConfig, SaveConfig]
+      all:
+        - kind: "source_is_external"
+          source_kinds: [api_parameter, network_input]
+        - kind: "missing_dominating_guard"
+          guard_kinds: [authentication_check, authorization_check, administrator_role_check]
+    severity: "HIGH"
+    confidence: 0.70
+    remediation:
+      summary: "配置修改入口必须执行服务端身份认证与最小权限授权。"
+      actions:
+        - "在进入配置写操作前验证调用身份。"
+        - "按角色或能力检查配置修改权限。"
+        - "记录脱敏的配置变更审计日志。"
+
+  - rule_id: "VA-NATIVE-NULL-001"
+    name: "指针解引用前缺少空值检查"
+    description: "识别 API 参数指针在解引用前未观察到 NULL/nil 检查的候选位置。"
+    vulnerability_type: "null_pointer_dereference"
+    cwe_id: "CWE-476"
+    languages: [c, cpp, go]
+    match:
+      node_types: [pointer_expression, unary_expression, field_expression]
+      all:
+        - kind: "external_pointer_dereference"
+        - kind: "missing_dominating_guard"
+          guard_kinds: [null_check, nil_check]
+    severity: "MEDIUM"
+    confidence: 0.72
+    remediation:
+      summary: "解引用前验证指针有效性，并使用安全错误返回路径。"
+      actions:
+        - "在首次解引用前检查 NULL 或 nil。"
+        - "将校验放在支配所有解引用位置的控制流节点。"
+        - "记录脱敏错误信息并安全返回。"
+
+  - rule_id: "VA-NATIVE-RESOURCE-001"
+    name: "资源获取后缺少对应释放"
+    description: "识别文件、套接字或堆内存资源在函数内未观察到匹配释放操作的候选位置。"
+    vulnerability_type: "resource_leak"
+    cwe_id: "CWE-772"
+    languages: [c, cpp, go]
+    match:
+      node_types: [call_expression]
+      callee_any: [fopen, open, socket, malloc, calloc, realloc, Open]
+      all:
+        - kind: "resource_acquired"
+        - kind: "matching_release_not_observed"
+    severity: "MEDIUM"
+    confidence: 0.68
+    remediation:
+      summary: "在所有退出路径统一释放已获取资源。"
+      actions:
+        - "获取成功后立即注册延迟释放或使用 RAII。"
+        - "检查错误分支和提前返回分支。"
+        - "释放后清除无效句柄或指针。"
+
+  - rule_id: "VA-NATIVE-ACCESS-001"
+    name: "本地管理接口缺少访问控制检查"
+    description: "识别本地服务处理函数到达管理操作前未观察到身份或权限校验的候选位置。"
+    vulnerability_type: "interface_access_control_missing"
+    cwe_id: "CWE-862"
+    languages: [c, cpp, go]
+    match:
+      node_types: [function_definition, call_expression]
+      callee_any: [Shutdown, Restart, Reload, Delete, Remove, Install, StopServer, StartServer]
+      all:
+        - kind: "local_handler_reaches_privileged_operation"
+        - kind: "missing_dominating_guard"
+          guard_kinds: [authentication_check, authorization_check, administrator_role_check]
+    severity: "HIGH"
+    confidence: 0.70
+    remediation:
+      summary: "管理接口必须进行服务端身份认证与最小权限授权。"
+      actions:
+        - "在处理函数入口完成身份验证。"
+        - "对每个管理操作执行权限检查。"
+        - "将拒绝和配置变更写入脱敏审计日志。"

@@ -9,6 +9,7 @@
 - `inspect_packing_signals(result)` 只消费 `BinaryAnalysisResult` 的已提取事实，检查有界的区段熵、常见壳区段名、导入数量和入口点位置。它输出优先级线索，不作“已加壳/已混淆”结论，也不重新读取或执行目标。
 - `UpxAdapter.inspect(path, authorized=True)` 仅在调用方显式授权后，以 `upx -l` 检查元数据；`UpxAdapter.unpack(..., output_dir=..., authorized=True)` 使用 `upx -d -o OUTPUT INPUT` 写入新建私有目录，绝不覆盖原输入。两者均使用参数列表、`shell=False` 和超时；脱壳输出必须是受限大小的普通文件，并记录 SHA-256。缺工具、超时、非零返回或输出校验失败均变为 JSON 可序列化结果。
 - `Radare2Adapter.inspect(path, authorized=True)` 为 `aflj`、`agfj` 和（可选）每个数值函数地址的内置 `pdc` 分别启动受控 `r2 -q -c` 调用，避免把组合命令的输出误当 NUL 分隔结果。它将 CFG 标准化为**基本块地址 → 后继基本块地址**的邻接表，函数符号入口不会伪造为 CFG 节点；伪代码仅来自 r2 内置 pdc，不等同于 Ghidra。工具缺失、错误、超时、坏 JSON 或单个 pdc 失败均会形成受限、JSON 可序列化结果。
+- 前端“态势大屏”的自定义二进制入口与“漏洞测试实验室”共用该流水线。前者只有在用户显式勾选本地样本分析授权后才写入 `authorization_confirmed=true` 与 `reverse_analysis_enabled=true`；自动去壳仍仅在结构解析观察到明确 UPX 标记后发生，动态模糊不会随之自动启用。
 - `BinaryArtifactStore(root)` 将 `BinaryAnalysisResult` 和可选工具事实以原子、严格 JSON（拒绝 NaN/Infinity）写入，记录工具日志、版本调用结果和输入指纹等附加事实，并维护同目录 `index.json`。工件名含 task/target 元组的 SHA-256 截断值以避免清理后碰撞；索引条目会严格验证。进程内共享锁避免同一 Python 进程的并发写入丢失条目；当前实现明确采用单进程写者约定，尚未提供跨进程锁。工件中不得传入凭据；不可 JSON 序列化的补充数据会被拒绝。
 
 静态解析器现在还将 `packing_signals` 与 `callsite_semantics` 写入 `metadata`。后者仅在安装 `binary-analysis` 可选依赖且输入为 PE x64 时，用 Capstone 有界解码 UCRT 格式化 helper 的局部调用点参数；它不构建 CFG、不证明可达性，也不直接给出漏洞 Verdict。`result.cfg` 始终为 `{}`，不能从 ELF 符号或 PE/ELF 结构条目伪造 CFG。

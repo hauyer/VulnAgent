@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vulnagent.local/schemas/source-audit-rules.schema.json",
+  "title": "VulnAgent defensive source-audit rule library",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "library_id", "safety", "rules"],
+  "properties": {
+    "schema_version": {"type": "string", "const": "1.0"},
+    "library_id": {"type": "string", "minLength": 1},
+    "description": {"type": "string"},
+    "safety": {
+      "type": "object",
+      "required": ["defensive_only", "forbidden_outputs"],
+      "properties": {
+        "defensive_only": {"const": true},
+        "forbidden_outputs": {
+          "type": "array",
+          "contains": {"const": "exploit"},
+          "items": {"enum": ["poc", "exploit", "attack_payload", "bypass_steps"]}
+        }
+      }
+    },
+    "rules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "rule_id", "name", "vulnerability_type", "cwe_id", "languages",
+          "match", "severity", "confidence", "remediation"
+        ],
+        "properties": {
+          "rule_id": {"type": "string", "pattern": "^VA-NATIVE-[A-Z]+-[0-9]{3}$"},
+          "name": {"type": "string", "minLength": 1},
+          "description": {"type": "string"},
+          "vulnerability_type": {"type": "string", "minLength": 1},
+          "cwe_id": {"type": "string", "pattern": "^CWE-[0-9]+$"},
+          "languages": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {"enum": ["c", "cpp", "go"]}
+          },
+          "match": {
+            "type": "object",
+            "required": ["node_types", "all"],
+            "properties": {
+              "node_types": {"type": "array", "items": {"type": "string"}},
+              "callee_any": {"type": "array", "items": {"type": "string"}},
+              "all": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["kind"],
+                  "properties": {
+                    "kind": {"type": "string"},
+                    "argument": {"type": "integer", "minimum": 0},
+                    "source_kinds": {"type": "array", "items": {"type": "string"}},
+                    "operators": {"type": "array", "items": {"type": "string"}},
+                    "guard_kinds": {"type": "array", "items": {"type": "string"}}
+                  }
+                }
+              }
+            }
+          },
+          "severity": {"enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+          "remediation": {
+            "type": "object",
+            "required": ["summary", "actions"],
+            "properties": {
+              "summary": {"type": "string"},
+              "actions": {"type": "array", "minItems": 1, "items": {"type": "string"}}
+            }
+          }
+        }
+      }
+    }
+  }
+}

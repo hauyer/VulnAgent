@@ -8,6 +8,9 @@ Clues are features, not vulnerability findings, and never set a final status.
 
 from __future__ import annotations
 
+import base64
+import binascii
+import re
 from collections.abc import Mapping
 from typing import Any
 
@@ -40,8 +43,17 @@ KEYWORD_HINTS: dict[str, tuple[str, ...]] = {
     ),
 }
 
-_SOURCE_CONFIDENCE = {"import": 0.75, "function": 0.85, "string": 0.5}
+_SOURCE_CONFIDENCE = {
+    "import": 0.75,
+    "function": 0.85,
+    "string": 0.5,
+    "normalized_string": 0.55,
+    "pseudocode": 0.7,
+}
 _MAX_ITEMS = 10_000
+_MAX_NORMALIZED_STRINGS = 64
+_HEX_TEXT = re.compile(r"^(?:[0-9a-fA-F]{2}){4,}$")
+_BASE64_TEXT = re.compile(r"^[A-Za-z0-9+/]{8,}={0,2}$")
 
 
 def _matched_categories(text: str) -> list[str]:
@@ -60,6 +72,7 @@ class LogicAnalyzer:
     async def inspect(self, result: BinaryAnalysisResult) -> dict[str, Any]:
         locations: list[dict[str, Any]] = []
         seen: set[tuple[str, str, str]] = set()
+        normalized_strings = _normalize_obfuscated_strings(result.strings)
 
         for text in result.strings[:_MAX_ITEMS]:
             for category in _matched_categories(str(text)):
@@ -69,6 +82,19 @@ class LogicAnalyzer:
             for category in _matched_categories(str(imp)):
                 self._add(locations, seen, category, str(imp), "import", None, None)
 
+        for item in normalized_strings:
+            decoded = item["decoded"]
+            for category in _matched_categories(decoded):
+                self._add(
+                    locations,
+                    seen,
+                    category,
+                    decoded,
+                    "normalized_string",
+                    None,
+                    None,
+                )
+
         for fn in self._functions(result.functions):
             name = str(fn.get("name", "") or "")
             address = fn.get("address")
@@ -76,12 +102,42 @@ class LogicAnalyzer:
             for category in _matched_categories(name):
                 self._add(locations, seen, category, name, "function", addr_text, name or None)
 
+        metadata = result.metadata if isinstance(result.metadata, Mapping) else {}
+        reverse_tool = metadata.get("reverse_tool")
+        pseudocode = reverse_tool.get("pseudocode") if isinstance(reverse_tool, Mapping) else None
+        if isinstance(pseudocode, Mapping):
+            for address, raw_code in list(pseudocode.items())[:_MAX_ITEMS]:
+                code = str(raw_code)
+                lowered = code.casefold()
+                for category, hints in KEYWORD_HINTS.items():
+                    matched_hint = next((hint for hint in hints if hint in lowered), None)
+                    if matched_hint:
+                        self._add(
+                            locations,
+                            seen,
+                            category,
+                            matched_hint,
+                            "pseudocode",
+                            str(address),
+                            f"func@{address}",
+                        )
+
         self._pin_to_pseudocode(result, locations)
 
         return {
             "target_id": result.target_id,
             "locations": locations,
             "summary": self._summarize(locations),
+            "deobfuscation": {
+                "engine": "bounded-string-normalizer",
+                "target_executed": False,
+                "decoded_count": len(normalized_strings),
+                "items": normalized_strings,
+                "limitations": [
+                    "only printable Base64 and hexadecimal text are normalized",
+                    "virtualized control flow and encrypted runtime strings are not reconstructed",
+                ],
+            },
         }
 
     @staticmethod
@@ -138,3 +194,51 @@ class LogicAnalyzer:
             cat: {"count": data["count"], "sources": sorted(data["sources"])}
             for cat, data in sorted(per.items())
         }
+
+
+def _normalize_obfuscated_strings(values: list[str]) -> list[dict[str, str]]:
+    """Decode a bounded set of reversible text encodings without execution."""
+
+    normalized: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for raw_value in values[:_MAX_ITEMS]:
+        original = str(raw_value).strip()
+        candidates: list[tuple[str, bytes]] = []
+        if _HEX_TEXT.fullmatch(original):
+            try:
+                candidates.append(("hex", bytes.fromhex(original)))
+            except ValueError:
+                pass
+        if _BASE64_TEXT.fullmatch(original) and len(original) % 4 == 0:
+            try:
+                candidates.append(("base64", base64.b64decode(original, validate=True)))
+            except (binascii.Error, ValueError):
+                pass
+        for encoding, payload in candidates:
+            try:
+                decoded = payload.decode("utf-8")
+            except UnicodeDecodeError:
+                continue
+            decoded = decoded.strip("\x00\r\n\t ")
+            if len(decoded) < 4 or not _mostly_printable(decoded):
+                continue
+            key = (encoding, decoded.casefold())
+            if key in seen or decoded == original:
+                continue
+            seen.add(key)
+            normalized.append(
+                {
+                    "encoding": encoding,
+                    "original": original[:256],
+                    "decoded": decoded[:512],
+                    "basis": "deterministic reversible text normalization",
+                }
+            )
+            if len(normalized) >= _MAX_NORMALIZED_STRINGS:
+                return normalized
+    return normalized
+
+
+def _mostly_printable(value: str) -> bool:
+    printable = sum(character.isprintable() for character in value)
+    return printable / max(1, len(value)) >= 0.9

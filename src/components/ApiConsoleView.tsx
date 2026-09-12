@@ -50,6 +50,12 @@ export const ApiConsoleView: React.FC<ApiConsoleViewProps> = ({ taskId }) => {
     },
     {
       method: "GET",
+      path: "/api/acceptance/batches",
+      descriptionEn: "List model, task, file and report batch associations",
+      descriptionZh: "查询模型、任务、文件、验收批次与报告关联",
+    },
+    {
+      method: "GET",
       path: `/api/tasks/${taskId}`,
       descriptionEn: "Fetch task details and target metadata",
       descriptionZh: "获取指定审计任务详情与目标程序元数据",
@@ -77,6 +83,12 @@ export const ApiConsoleView: React.FC<ApiConsoleViewProps> = ({ taskId }) => {
       path: `/api/tasks/${taskId}/verifications`,
       descriptionEn: "Retrieve independent verification verdicts",
       descriptionZh: "查询独立漏洞复核结果",
+    },
+    {
+      method: "GET",
+      path: `/api/tasks/${taskId}/poc`,
+      descriptionEn: "List controlled PoC evidence-replay artifacts",
+      descriptionZh: "查询已确认漏洞的受控 PoC 复现代码",
     },
     {
       method: "GET",

@@ -17,15 +17,20 @@ import {
 } from "lucide-react";
 import { Evidence, EvidenceType } from "../types.js";
 import { useTranslation } from "../i18n.js";
+import { BinaryReverseWorkbench } from "./BinaryReverseWorkbench.js";
 
 interface EvidenceChainViewProps {
   evidenceList: Evidence[];
   initialSelectedId?: string;
+  onOpenReview: () => void;
+  onOpenReport: () => void;
 }
 
 export const EvidenceChainView: React.FC<EvidenceChainViewProps> = ({
   evidenceList,
   initialSelectedId,
+  onOpenReview,
+  onOpenReport,
 }) => {
   const { t, language } = useTranslation();
   const [selected, setSelected] = useState<Evidence | null>(
@@ -34,6 +39,10 @@ export const EvidenceChainView: React.FC<EvidenceChainViewProps> = ({
   const [filterType, setFilterType] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [copied, setCopied] = useState(false);
+  const reverseTaskId = evidenceList.find((item) => item.source === "binary_reverse")?.task_id;
+  const [workspaceMode, setWorkspaceMode] = useState<"reverse" | "evidence">(
+    reverseTaskId ? "reverse" : "evidence",
+  );
 
   React.useEffect(() => {
     if (initialSelectedId) {
@@ -43,6 +52,10 @@ export const EvidenceChainView: React.FC<EvidenceChainViewProps> = ({
       setSelected(evidenceList[0]);
     }
   }, [initialSelectedId, evidenceList]);
+
+  React.useEffect(() => {
+    if (reverseTaskId) setWorkspaceMode("reverse");
+  }, [reverseTaskId]);
 
   const filtered = evidenceList.filter((e) => {
     const matchesFilter = filterType === "all" || e.evidence_type === filterType;
@@ -119,7 +132,17 @@ export const EvidenceChainView: React.FC<EvidenceChainViewProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {reverseTaskId && (
+            <div className="flex rounded-lg border border-[#d2c8af] bg-[#e6deca] p-0.5 text-[11px] font-bold">
+              <button onClick={() => setWorkspaceMode("reverse")} className={`rounded-md px-3 py-1.5 ${workspaceMode === "reverse" ? "bg-[#2aa198] text-white shadow-sm" : "text-[#586e75]"}`}>
+                逆向工作台
+              </button>
+              <button onClick={() => setWorkspaceMode("evidence")} className={`rounded-md px-3 py-1.5 ${workspaceMode === "evidence" ? "bg-[#2aa198] text-white shadow-sm" : "text-[#586e75]"}`}>
+                原始证据
+              </button>
+            </div>
+          )}
           <div className="px-3 py-1.5 rounded-lg bg-[#fdfaf3] border border-[#dfd6bf] text-xs font-mono text-[#586e75] shadow-2xs">
             <span className="text-[#2aa198] font-bold">{evidenceList.length}</span>{" "}
             {language === "zh" ? "条证据记录" : "evidence records"}
@@ -128,6 +151,13 @@ export const EvidenceChainView: React.FC<EvidenceChainViewProps> = ({
       </div>
 
       {/* Main Split: Artifact Selector + Deep Inspector */}
+      {workspaceMode === "reverse" && reverseTaskId ? (
+        <BinaryReverseWorkbench
+          evidenceList={evidenceList}
+          onOpenReview={onOpenReview}
+          onOpenReport={onOpenReport}
+        />
+      ) : (
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left: Artifact List */}
         <div className="lg:col-span-5 space-y-3">
@@ -372,6 +402,7 @@ export const EvidenceChainView: React.FC<EvidenceChainViewProps> = ({
           )}
         </div>
       </div>
+      )}
     </div>
   );
 };

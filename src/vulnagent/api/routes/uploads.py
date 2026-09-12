@@ -22,6 +22,11 @@ MAX_UPLOAD_BYTES = 16 * 1024 * 1024
 _SOURCE_LANGUAGES = {
     ".c": "c",
     ".h": "c",
+    ".cc": "cpp",
+    ".cpp": "cpp",
+    ".cxx": "cpp",
+    ".hpp": "cpp",
+    ".hh": "cpp",
     ".py": "python",
     ".go": "go",
 }
@@ -59,7 +64,7 @@ def _classify(payload: bytes, target_type: TargetType, filename: str) -> tuple[s
         if language is None:
             raise HTTPException(
                 status_code=415,
-                detail="source uploads support only .c, .h, .py, and .go files",
+                detail="source uploads support C, C++, Go, and Python text files",
             )
         if b"\x00" in payload[:4096]:
             raise HTTPException(status_code=415, detail="source upload appears to be binary")
@@ -74,7 +79,11 @@ def _classify(payload: bytes, target_type: TargetType, filename: str) -> tuple[s
         return None, "ELF"
     if payload.startswith(b"MZ"):
         return None, "PE"
-    raise HTTPException(status_code=415, detail="binary upload must contain an ELF or PE header")
+    if payload.startswith(b"dex\n"):
+        return None, "DEX"
+    if payload.startswith(b"PK\x03\x04") and suffix == ".apk":
+        return None, "APK"
+    raise HTTPException(status_code=415, detail="binary upload must contain an ELF, PE, DEX or APK header")
 
 
 @router.post("", response_model=UploadResult, status_code=status.HTTP_201_CREATED)
@@ -83,7 +92,7 @@ async def upload_sample(
     filename: str = Query(min_length=1, max_length=255),
     target_type: TargetType = Query(),
 ) -> UploadResult:
-    """Store one explicitly selected source/ELF/PE sample without executing it."""
+    """Store one explicitly selected source/ELF/PE/DEX/APK sample without executing it."""
 
     content_length = request.headers.get("content-length")
     if content_length:

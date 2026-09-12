@@ -24,14 +24,14 @@ def test_detects_common_languages_by_extension() -> None:
     assert detect_language("LICENSE") is None
 
 
-def test_only_python_is_flagged_as_structurally_parsed() -> None:
+def test_implemented_languages_are_flagged_as_structurally_parsed() -> None:
     specs = {
         spec.identifier: spec.structurally_parsed
         for spec in recognized_languages()
     }
     assert specs["python"] is True
     parsed = {identifier for identifier, flag in specs.items() if flag}
-    assert parsed == {"python"}
+    assert parsed == {"python", "c", "cpp", "go"}
 
 
 def test_display_name_round_trip() -> None:

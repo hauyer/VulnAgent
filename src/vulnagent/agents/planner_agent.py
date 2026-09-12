@@ -14,8 +14,14 @@ class PlannerAgent(BaseAgent):
 
     name = "planner"
 
-    def __init__(self, llm: BaseLLM | None = None) -> None:
+    def __init__(
+        self,
+        llm: BaseLLM | None = None,
+        *,
+        code_audit_enabled: bool = False,
+    ) -> None:
         self.llm = llm
+        self.code_audit_enabled = code_audit_enabled
 
     async def run(self, task: Task, context: AnalysisContext) -> AgentResult:
         analyzer = "binary_analysis" if task.target.target_type is TargetType.BINARY else "source_audit"
@@ -25,6 +31,30 @@ class PlannerAgent(BaseAgent):
             if analyzer == "binary_analysis"
             else ["source.parse", "source.audit"]
         )
+        if analyzer == "source_audit" and self.code_audit_enabled:
+            selected_agents.insert(1, "code_audit")
+        protected_binary = (
+            analyzer == "binary_analysis"
+            and (
+                str(task.target.metadata.get("test_lab_category", "")).casefold()
+                in {"packed_binary", "obfuscated_binary"}
+                or str(task.target.file_format or "").casefold() in {"dex", "apk"}
+            )
+        )
+        if protected_binary:
+            selected_agents = [
+                "program_restoration",
+                "binary_analysis",
+                "code_deobfuscation",
+                "verification",
+                "reviewer",
+                "report",
+            ]
+            requested_capabilities.extend([
+                "binary.restore",
+                "binary.deobfuscate",
+                "binary.parseability.validate",
+            ])
         if task.target.metadata.get("fuzz_authorized") and task.target.metadata.get("dynamic_validation"):
             selected_agents.insert(1, "fuzz")
             requested_capabilities.append("fuzz.execute")

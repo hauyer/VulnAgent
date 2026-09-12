@@ -8,6 +8,9 @@ import { VulnerabilitiesView } from "./components/VulnerabilitiesView.js";
 import { ReportView } from "./components/ReportView.js";
 import { EventTraceView } from "./components/EventTraceView.js";
 import { ApiConsoleView } from "./components/ApiConsoleView.js";
+import { TestLabView } from "./components/TestLabView.js";
+import { AcceptanceView } from "./components/AcceptanceView.js";
+import { ControlledPocView } from "./components/ControlledPocView.js";
 import { useTranslation } from "./i18n.js";
 import {
   Task,
@@ -22,7 +25,7 @@ export default function App() {
   const { t, language } = useTranslation();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<ActiveTab>("dashboard");
+  const [activeTab, setActiveTab] = useState<ActiveTab>("testlab");
   const [selectedEvidenceId, setSelectedEvidenceId] = useState<string | undefined>(undefined);
 
   const [events, setEvents] = useState<DomainEvent[]>([]);
@@ -65,6 +68,20 @@ export default function App() {
     return [];
   }, []);
 
+  const refreshReport = useCallback(async (taskId: string): Promise<void> => {
+    try {
+      const response = await fetch(`/api/tasks/${taskId}/report`);
+      if (response.ok) {
+        setReport(await response.json());
+      } else {
+        setReport(null);
+      }
+    } catch (error) {
+      console.error("Failed to refresh report:", error);
+      setReport(null);
+    }
+  }, []);
+
   // Fetch Active Task Data
   const fetchActiveTaskData = useCallback(async (taskId: string, includeReport = false) => {
     try {
@@ -78,16 +95,14 @@ export default function App() {
       if (findingsRes.ok) setFindings(await findingsRes.json());
       if (evidenceRes.ok) setEvidence(await evidenceRes.json());
       if (includeReport) {
-        const reportRes = await fetch(`/api/tasks/${taskId}/report`);
-        if (reportRes.ok) setReport(await reportRes.json());
-        else setReport(null);
+        await refreshReport(taskId);
       } else {
         setReport(null);
       }
     } catch (err) {
       console.error("Failed to fetch task details:", err);
     }
-  }, []);
+  }, [refreshReport]);
 
   useEffect(() => {
     const init = async () => {
@@ -104,6 +119,12 @@ export default function App() {
       fetchActiveTaskData(activeTaskId, selected?.status === "completed");
     }
   }, [activeTaskId, fetchActiveTaskData, tasks]);
+
+  useEffect(() => {
+    if (activeTab === "report" && activeTaskId) {
+      void refreshReport(activeTaskId);
+    }
+  }, [activeTab, activeTaskId, refreshReport]);
 
   // Keyboard shortcut for Cmd+K / Ctrl+K
   useEffect(() => {
@@ -122,6 +143,12 @@ export default function App() {
       window.scrollTo({ top: preservedScrollY.current, behavior: "auto" });
     }
   }, [activeTaskId, tasks, events, findings, evidence, report, isRunning]);
+
+  useEffect(() => {
+    if (preservedScrollY.current === null) {
+      window.scrollTo({ top: 0, behavior: "auto" });
+    }
+  }, [activeTab]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -178,6 +205,7 @@ export default function App() {
     targetLanguage?: string,
     fileFormat?: string,
     preserveScroll = false,
+    targetMetadata?: Record<string, unknown>,
   ): Promise<boolean> => {
     if (preserveScroll) preservedScrollY.current = window.scrollY;
     setIsRunning(true);
@@ -191,6 +219,7 @@ export default function App() {
           target_type: targetType,
           language: targetLanguage || undefined,
           file_format: fileFormat || undefined,
+          metadata: targetMetadata || undefined,
         }),
       });
       if (!res.ok) {
@@ -243,6 +272,24 @@ export default function App() {
     setActiveTab("evidence");
   };
 
+  const handleOpenLabTask = async (taskId: string) => {
+    const refreshed = await fetchTasks();
+    const selected = refreshed.find((task) => task.task_id === taskId);
+    if (!selected) return;
+    setActiveTaskId(taskId);
+    await fetchActiveTaskData(taskId, selected.status === "completed");
+    setActiveTab("evidence");
+  };
+
+  const handleOpenLabDossier = async (taskId: string) => {
+    const refreshed = await fetchTasks();
+    const selected = refreshed.find((task) => task.task_id === taskId);
+    if (!selected) return;
+    setActiveTaskId(taskId);
+    await fetchActiveTaskData(taskId, selected.status === "completed");
+    setActiveTab("vulnerabilities");
+  };
+
   return (
     <div className="min-h-screen bg-[#fdf6e3] text-[#2b3638] flex flex-col font-sans selection:bg-[#e4dcbe] selection:text-[#2b3638]">
       {/* Top Navbar with Tab Navigation and Controls */}
@@ -285,7 +332,30 @@ export default function App() {
 
       {/* Main Workspace View Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6">
-        {isLoading ? (
+        {activeTab === "testlab" ? (
+          <TestLabView
+            onOpenTask={handleOpenLabTask}
+            onOpenDossier={handleOpenLabDossier}
+            onLaunchCodeAudit={async (path, targetLanguage) => {
+              const completed = await handleLaunchNewTask(
+                path,
+                "source",
+                targetLanguage,
+                undefined,
+                false,
+                {
+                  audit_domain: "software_code",
+                  local_authorized: true,
+                  defensive_only: true,
+                },
+              );
+              if (completed) setActiveTab("vulnerabilities");
+              return completed;
+            }}
+          />
+        ) : activeTab === "acceptance" ? (
+          <AcceptanceView onOpenTestLab={() => setActiveTab("testlab")} />
+        ) : isLoading ? (
           <div className="p-24 text-center space-y-3 font-mono">
             <div className="w-8 h-8 rounded-full border-2 border-[#2aa198] border-t-transparent animate-spin mx-auto" />
             <p className="text-xs text-[#586e75]">
@@ -340,15 +410,23 @@ export default function App() {
               <EvidenceChainView
                 evidenceList={evidence}
                 initialSelectedId={selectedEvidenceId}
+                onOpenReview={() => setActiveTab("vulnerabilities")}
+                onOpenReport={() => setActiveTab("report")}
               />
             )}
 
             {activeTab === "vulnerabilities" && (
               <VulnerabilitiesView
+                taskId={activeTask.task_id}
                 findings={findings}
                 evidenceList={evidence}
                 onInspectEvidence={handleInspectEvidence}
+                onReviewSaved={() => refreshReport(activeTask.task_id)}
               />
+            )}
+
+            {activeTab === "poc" && (
+              <ControlledPocView task={activeTask} findings={findings} />
             )}
 
             {activeTab === "report" && (

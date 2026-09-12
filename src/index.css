@@ -36,6 +36,36 @@
   }
 }
 
+@layer components {
+  .lab-input {
+    @apply rounded-xl border border-white/10 bg-[#07111f] px-3 py-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-cyan-300/60 focus:ring-2 focus:ring-cyan-300/10 disabled:opacity-50;
+  }
+
+  .lab-secondary-button {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2 text-xs font-bold text-slate-300 hover:border-cyan-300/30 hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-35;
+  }
+
+  .lab-check {
+    @apply flex cursor-pointer items-start gap-2.5 rounded-xl border border-white/10 bg-white/[0.025] px-3 py-2.5 text-xs text-slate-300;
+  }
+
+  .lab-check input {
+    @apply mt-0.5 accent-cyan-300;
+  }
+
+  .lab-check span {
+    @apply flex flex-col gap-0.5;
+  }
+
+  .lab-check small {
+    @apply text-[11px] font-normal leading-relaxed text-slate-500;
+  }
+
+  .lab-chip {
+    @apply inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.035] px-2 py-1 font-mono;
+  }
+}
+
 /* Solarized Paper Grid Pattern */
 .bg-cyber-grid {
   background-size: 32px 32px;

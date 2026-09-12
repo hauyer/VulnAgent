@@ -30,3 +30,13 @@ def test_health_and_task_workflow() -> None:
         assert report.status_code == 200
         assert report.json()["task_id"] == task_id
         assert report.json()["content"]["task"]["status"] == "completed"
+        html_report = client.get(f"/api/tasks/{task_id}/report.html")
+        assert html_report.status_code == 200
+        assert html_report.headers["content-type"].startswith("text/html")
+        assert "Content-Security-Policy" in html_report.text
+        assert "inline;" in html_report.headers["content-disposition"]
+        pdf_report = client.get(f"/api/tasks/{task_id}/report.pdf")
+        assert pdf_report.status_code == 200
+        assert pdf_report.headers["content-type"] == "application/pdf"
+        assert pdf_report.content.startswith(b"%PDF-")
+        assert "attachment;" in pdf_report.headers["content-disposition"]

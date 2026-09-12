@@ -12,6 +12,8 @@ V0.4 Part 1“Benchmark 扩展第一阶段”、Part 2“Stripped 二进制召�
 
 本轮没有修改冻结的 `Task`、`AgentMessage`、`VulnerabilityCandidate`、`Evidence` 公共协议，也没有改变“只有 Verification 层可以写入 `CONFIRMED`/`REJECTED`”的边界。
 
+随后完成了 Kimi K3 API 迁移（`kimi-k2.6` → `kimi-k3`，固定 temperature/top_p 改用 `reasoning_effort`）与“课程测试验收矩阵”前后端：新增 `src/vulnagent/acceptance/` 只读聚合后端、`/api/acceptance/*` 端点、前端「课程测试矩阵」页面，诚实计算 A/B/C 三组 `NOT_RUN/RUNNING/PASS/PARTIAL/FAIL/BLOCKED` 状态，详见第 12 节。
+
 ## 2. Part 1：Benchmark 扩展第一阶段（已完成）
 
 ### 2.1 Source Benchmark
@@ -257,7 +259,7 @@ Part 5 完整门禁：
 
 1. 在隔离 Worker 条件成熟后单独实现 Sandbox-B 网络/文件系统隔离；
 2. ELF-B 的 `PT_DYNAMIC`/重定位恢复与 ELF-C 的更强反汇编；
-3. 三模型对比专页、EXE/安装包交付和 PPTX 制作。
+3. 三模型对比专页（验收矩阵页面已覆盖 Provider 状态与 A 组双模型对比状态，但逐模型的受控利用验证对比专页仍未启动）、EXE/安装包交付和 PPTX 制作。
 
 后续只有在用户明确继续时才启动；每完成一个 Part，都必须同步更新本文件，写明实现、实验、回归、已知限制和下一步。
 
@@ -381,6 +383,8 @@ Part 5 完整门禁：
 
 最终门禁：Python `442 passed`（仅 1 个第三方弃用警告），前端 lint/build 通过；3 个已配置密钥在 `.env` 外精确命中 0，带边界的通用 Key 模式命中 0，规范 artifact 中 Key/HTTP Authorization Header 命中 0；`.env.example` 仍为空占位符，`.gitignore` 明确排除 `.env`。一键演示已刷新，`llm_only:kimi` 被当前 manifest 哈希标记为 `current`。
 
+> **后续更新（Kimi K3 API 迁移）**：Kimi 平台已迁至 `platform.kimi.com`，API base 仍为 `https://api.moonshot.cn/v1`，旗舰模型由 `kimi-k2.6` 更换为 `kimi-k3`。`kimi-k3` 固定 `temperature=1.0`、`top_p=0.95`，用 `reasoning_effort`（low/high/max，默认 max）替代旧的 `thinking` 开关且保留思考始终开启。据此 `KimiAdapter` 改为 `model=kimi-k3`、`max_tokens_field=max_completion_tokens`，并新增 `omit_temperature`/`omit_thinking` 标志，使跨 Provider 基准的 `temperature=0` / `thinking=disabled` 参数在 Kimi 上被正确省略（否则 K3 会拒绝请求）。上一节表格中 Kimi K2.6 的 60 次调用记录为历史快照，保持原样；K3 适配细节见第 12 节。
+
 ## 11. Part 9：前端演示与本地样本导入加固（已完成）
 
 ### 11.1 本地文件导入闭环
@@ -414,7 +418,62 @@ Part 5 完整门禁：
 
 三个真实 LLM Provider 仍位于统一 Adapter/Router 边界后，同一业务 Agent 可替换 Provider；主界面展示的是多智能体工作流，不把 DeepSeek、GLM、Kimi 伪装成三个业务 Agent。三模型对比的前端专页尚未开发，规范结果继续以 `artifacts/experiments/llm-comparison/summary.md`、`metrics.json` 和 `run_manifest.json` 展示。
 
-## 12. 安全与交付提醒
+## 12. Part 10：Kimi K3 适配与课程测试验收矩阵（已完成）
+
+### 12.1 Kimi K3 API 适配
+
+用户提示 Kimi API 已更换。核实后：Kimi 平台迁至 `platform.kimi.com`，但 API base 仍为官方 `https://api.moonshot.cn/v1`，旗舰模型由 `kimi-k2.6` 更换为 `kimi-k3`（1M 上下文）。`kimi-k3` 服务端固定 `temperature=1.0`、`top_p=0.95`，用 `reasoning_effort`（low/high/max，默认 max）替代旧的 `thinking` 开关，且保留思考始终开启。
+
+据此改动（不破坏公共 `BaseLLM` 接口）：
+
+- `OpenAICompatibleAdapter` 新增 `omit_temperature` / `omit_thinking` 类标志；为真时请求体不再携带 `temperature` / `thinking` 字段，从而在跨 Provider 基准统一传 `temperature=0`、`thinking=disabled` 时，Kimi 不会被 K3 服务端拒绝；
+- `KimiAdapter` 更新为 `provider="kimi"`、`model=kimi-k3`、`max_tokens_field="max_completion_tokens"`、`omit_temperature=True`、`omit_thinking=True`，并保留 21 秒最小请求间隔与 20/40/60 秒 `Retry-After` 有界退避；
+- `settings.py` 的 `kimi_model` 默认改为 `kimi-k3`，并新增 9 个 cost 字段的 `field_validator`，把 `.env` 中的空字符串费率项归一为 `None`，避免 Pydantic 解析报错；
+- `.env.example` 同步 `KIMI_MODEL=kimi-k3`；`llm/router.py` 的 Kimi 定价 `source_url` 指向 `platform.kimi.com/docs/pricing/chat`；
+- `tests/unit/test_llm_adapters.py` 更新为 `kimi-k3`，并断言 Kimi 请求体不含 `temperature`/`thinking`，其余 Adapter 仍含 `temperature=0` 与 `thinking={"type":"disabled"}`。
+
+### 12.2 课程测试验收矩阵（后端）
+
+新增 `src/vulnagent/acceptance/`，只读聚合清单/产物/Provider 事实，诚实计算三组课程验收状态：
+
+- `models.py`：`AcceptanceStatus`（`not_run/running/pass/partial/fail/blocked`）与 `ProviderStatus`、`ProviderComparison`、`AcceptanceCondition`、`AcceptanceTarget`、`AcceptanceGroup`、`AcceptanceOverview` 只读 ViewModel（刻意不复用任何冻结 Schema 类名）；`AcceptanceGroup.comparison` 携带 `llm-comparison/metrics.json` 中各方法的 TP/FP/TN/FN、Precision/Recall/F1、Token、费用与 Evidence Coverage；
+- `calculator.py`：`AcceptanceCalculator(repo_root=...)` 计算 A/B/C 三组状态，并把 `llm-comparison` 规范产物归一为 `ProviderComparison` 对比表；
+- `smoke.py`：`run_provider_smoke` 对指定真实 Provider 做**至多一次**有界调用，仅记录公开成功信号与 usage，不保存密钥、原始响应或私有推理；
+- API `routes/acceptance.py`：`GET /acceptance/overview`、`GET /acceptance/providers`、`GET /acceptance/groups/{id}`、`POST /acceptance/groups/{id}/run`（A=按选的 Provider 做 smoke，可传可选 JSON `{"providers": [...]}`；B/C=只读重新审计，均不触发动态 PoC），已在 `app.py` 注册（含 `/api` 前缀）。
+
+诚实判定（对应 `VulnAgent_V0.4_课程测试要求验收缺口与后续开发.md` 的口径）：
+
+- **A 组（开源大模型）**：真实 Provider < 2 → `BLOCKED`；已配置但无对比产物 → `NOT_RUN`；完成双模型对比 → `PARTIAL`。即便对比完成也**不会 PASS**，因为缺少逐模型受控利用验证；
+- **B/C 组（加壳/混淆闭源）**：材料二进制缺失 → `BLOCKED`；材料就绪但未运行 → `NOT_RUN`；存在静态分析产物 → `PARTIAL`；仅当“独立复核确认漏洞 > 0”且“漏洞 Ground Truth 可用”且“受控 PoC 证据可用”三者同时满足才 `PASS`。所选教育挑战无漏洞 GT 且默认不做动态执行，故当前最多 `PARTIAL`。
+
+后端响应刻意不返回任何 API Key、Authorization Header 或仓库绝对路径；报告链接使用相对路径。新增 `tests/acceptance/`：`test_calculator.py`（6 例，覆盖无 Provider→BLOCKED、已配置→NOT_RUN、对比产物→PARTIAL 及 contrast 表、受保护产物→PARTIAL/PASS、材料就绪→NOT_RUN、空费率归一）与 `test_api.py`（7 例，覆盖三组端点、未知组 404、无凭据泄漏、无密钥/未知 Provider/未配置 Provider 运行 A 组被 400 拒绝、B 组只读重审计成功）。
+
+### 12.3 课程测试验收矩阵（前端）
+
+- `src/types.ts`：新增 `AcceptanceStatus`、`AcceptanceProviderStatus`、`AcceptanceProviderComparison`、`AcceptanceCondition`、`AcceptanceTarget`、`AcceptanceGroup`、`AcceptanceOverview` 类型映射，`ActiveTab` 增加 `"acceptance"`；
+- 新增 `src/components/AcceptanceView.tsx`：总览统计、A/B/C 三张验收卡片、`一键运行全部` 入口、A 组 Provider 勾选（默认全选已配置 Provider）、双模型对比表（TP/FP/TN/FN、P/R/F1、Token、费用、Evidence Coverage）、样本准入/SHA-256/静态信号/复核计数、逐项验收条件、诚实边界说明，并支持按所选 Provider 调用 `POST /groups/{id}/run`（可选 `{"providers": [...]}` 请求体）；
+- 导航：`Navbar.tsx` 与 `CommandPalette.tsx` 增加「课程测试矩阵」入口；`i18n.tsx` 补齐中英文 `navAcceptance` 与验收视图文案。
+
+### 12.4 当前工作区诚实状态
+
+本 OneDrive 工作区**没有**落地 `benchmarks/packed|obfuscated/materials/*.exe`（Git 忽略）与 `artifacts/experiments/*` 规范产物，因此验收接口当前诚实返回：
+
+- A 组 `NOT_RUN`（3 个真实 Provider 均已配置，但无本工作区对比产物）；
+- B/C 组 `BLOCKED`（授权样本二进制未落地，无法做静态逆向与复现）；
+- 总体 `0/3`。
+
+这与 2026-09-11 原始开发机的运行记录不冲突：验收矩阵只依据**当前工作区**真实存在的清单、产物与配置计算，绝不把历史文档中的运行结果硬编码为 PASS。
+
+### 12.5 验证与门禁
+
+- 全量 Python：`457 passed`，2 个环境性失败（非代码缺陷）：
+  1. `test_repository_manifests_pass_strict_read_only_intake`：本工作区缺少 Git 忽略的受保护材料二进制；
+  2. `test_git_clone_works_when_explicitly_allowed`：DSH 沙箱阻断 `git clone` 子进程的信号管道（`couldn't create signal pipe, Win32 error 5`），属于已记录的 EPERM 边界。
+- 验收 + LLM Adapter 定向：`26 passed`；
+- 前端 `npm run lint`（tsc --noEmit）：通过；`npm run build`（vite build）：通过；
+- 新增根目录 `conftest.py`：Windows/OneDrive 兼容 shim，把 `os.mkdir(..., 0o700)`（`tempfile.mkdtemp` 硬编码的模式）归一为 `0o777`，避免 OneDrive 同步工作区产生无法枚举/删除的临时目录导致 `tmp_path` 测试失败；仅在 Windows 生效，不影响 Linux/CI。
+
+## 13. 安全与交付提醒
 
 - `.env` 含真实 API 凭据，不得提交、截图、写入报告或打包；
 - `.env.example` 只能保留占位符；
@@ -422,3 +481,56 @@ Part 5 完整门禁：
 - 未知二进制不得在宿主系统直接执行；
 - 任何“检测率 100%”都必须带上样本规模、置信区间和适用边界；
 - 当前工程目录没有检测到 Git 元数据，不能用 Git 状态替代变更审计。
+
+## 14. Part 11：本地三类漏洞测试工作台与遗留问题收口（已完成）
+
+### 14.1 范围与排除项
+
+本 Part 严格排除高级功能优先级矩阵第 8 项“真正网络/文件系统隔离”和第 9 项“跨进程 Agent checkpoint”，没有借本轮需求实现或暗示这两项能力。GitHub 上传问题同样不在本轮修复范围。
+
+V3/V4 已有 Source/Binary/Fuzz、多 Agent Runtime、Evidence、Verification、SQLite、ELF、Windows Job、LLM Adapter、报告导出、上传和验收矩阵能力全部保留；冻结 `Task`、`AgentMessage`、`VulnerabilityCandidate`、`Evidence` Schema 未修改。
+
+### 14.2 后端 Test Lab
+
+新增 `src/vulnagent/testlab/` 与 `/api/test-lab/*`：
+
+- 本地 LLM：支持配置至少两个 OpenAI-compatible 回环端点，仅允许 `localhost`/回环 IP；同一授权片段进行结构化漏洞识别，再用随机无害 canary 做提示边界验证；只保存公开字段、Token、耗时和响应哈希，不保存完整响应、密钥或隐藏思维链；
+- 加壳/混淆二进制：支持至少两个本机 PE/ELF；逐目标强制授权确认和可选 SHA-256；复用正式 Binary Analysis → Verification → Report 主链；
+- 动态验证默认关闭。显式授权后才进入既有 Controlled Fuzz/Windows Job；报告真实列出 enforced/unsupported 控制，不宣称已经断网或实现文件白名单；
+- API 先返回 `queued` 运行 ID，前端通过 `GET /runs/{id}` 轮询真实日志和结果。
+
+### 14.3 前端与人工复核
+
+原课程矩阵入口升级为「漏洞测试实验室」，形成测试入口、参数配置、过程日志、结果输出四区工作面。支持添加 2–6 个本地模型或受保护二进制目标、浏览器本地上传、哈希自动回填、逐目标授权、可选无害 stdin 输入、结果任务跳转和 A/B/C 当前状态总览。
+
+新增人工复核标注 API 与 JSON 存储。人工 decision/note 可以保存回读并进入报告投影，但不会覆盖 Verification 的正式状态。报告 API 同时加入三组验收摘要和明确的 Priority 8/9 排除项。
+
+### 14.4 遗留问题处理结果
+
+- 受保护样本实体不随源码分发，因此两个 manifest 从不真实的 `materialized` 改为 `pending_user_supplied`；对应测试验证“未落地时诚实阻塞”，不再因外部材料缺失产生失败；
+- `pyproject.toml` 固定仓库内 `.pytest-tmp`，绕过 Windows 用户临时目录 ACL/OneDrive 残留导致的 `tmp_path` 权限问题；
+- 新建 Python 3.11 `.venv-codex` 完成独立验证，项目版本号统一为 `0.4.0`；
+- API Key 轮换仍必须由密钥所有者在供应商控制台完成，代码无法代替用户撤销已暴露凭据。
+
+### 14.5 最终门禁
+
+- Python 全量：`465 passed`；
+- 前端 `npm run lint`：通过；
+- 前端 `npm run build`：通过；
+- 本地真实 UI 巡检：实验室首屏、三类入口、2 目标配置、过程日志/结果区域均可见，浏览器控制台 0 error / 0 warning；
+- 本轮没有调用真实付费 Provider，也没有执行任何闭源二进制。
+
+## 15. Part 12：本地 Ollama 大模型漏洞扫描闭环（已完成）
+
+Part 12 在保留 Part 11 三类工作台及原 `/api/test-lab/*` 的基础上，新增专用 `llm_vuln_scanner.py` 与 `/api/llm-vulnerability/*`。原“双回环端点代码识别”能力未删除；前端“开源大模型”入口升级为面向 Ollama 的三类、15 条合成 canary 扫描。
+
+- 实际目标：`deepseek-r1:1.5b` 与 `qwen2.5:1.5b-instruct-q4_K_M`；两者均由本机 `/api/tags` 发现；
+- 安全边界：默认 `http://127.0.0.1:11434`，代码拒绝 HTTPS、LAN、公网和带凭据 URL，不读取 API Key；
+- 判定：仅按本用例唯一 canary 是否进入模型响应确定 `triggered/not_triggered`，推理错误单列，不伪造成漏洞；
+- 正式证据：`triggered` 可归档为 Candidate + TOOL_RESULT + VERIFICATION_RESULT + Report；单一行为证据经 EvidenceVerifier 后保持 `UNCERTAIN`，不越权写 `CONFIRMED`；
+- 前端联动：实验室显示模型选择、三类勾选、真实日志、五项风险统计和原始证据；归档后自动打开态势大屏，并可进入卷宗与报告；
+- 当前机器 Ollama GPU runner 与 NVIDIA 驱动不兼容，返回 `device kernel image is invalid`；使用 `OLLAMA_SCAN_NUM_GPU=0` 的 CPU 模式后双模型均完成 15/15、0 错误；
+- Qwen 首次直接全量实测触发 4 条、DeepSeek 触发 0 条；真实前端 Qwen 验收轮次触发 3 条，并成功生成 3 条 `UNCERTAIN` 卷宗和 6 条 Evidence。模型生成具有行为差异，触发数不作为固定快照断言；
+- 完整配置、API、操作步骤和验收清单见 `VulnAgent_V0.4_本地Ollama漏洞扫描集成说明.md`。
+
+最终门禁更新为：Python 全量 `471 passed`；`npm run lint` 通过；`npm run build` 通过；真实浏览器完整走通“模型发现 → 全量扫描 → 日志/结果 → 归档 → 大屏 → 卷宗 → 报告”。

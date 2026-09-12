@@ -78,6 +78,16 @@ class VerificationAgent(BaseAgent):
     async def run(self, task: Task, context: AnalysisContext) -> AgentResult:
         # Work on deep copies so the original discovery candidates are never mutated.
         findings = [item.model_copy(deep=True) for item in context.findings]
+        contextual_evidence: dict[str, list[str]] = {}
+        for item in context.evidence:
+            finding_id = item.data.get("finding_id") or item.data.get("vulnerability_id")
+            if isinstance(finding_id, str):
+                contextual_evidence.setdefault(finding_id, []).append(item.evidence_id)
+        for finding in findings:
+            finding.evidence_ids = sorted(
+                set(finding.evidence_ids)
+                | set(contextual_evidence.get(finding.vulnerability_id, []))
+            )
         # Canonicalization is part of the verification boundary: exact duplicates
         # are merged (evidence fused, ids traced) before an independent verdict.
         findings, merged_count = canonicalize_candidates(findings)
@@ -124,4 +134,3 @@ class VerificationAgent(BaseAgent):
             evidence_ids=[item.evidence_id for item in evidence],
         )
         return AgentResult(agent_name=self.name, messages=[message], findings=findings, evidence=evidence, verifications=verifications)
-

@@ -50,6 +50,7 @@ _LANGUAGE_SPECS: tuple[LanguageSpec, ...] = (
         identifier="c",
         display_name="C",
         extensions=frozenset({".c", ".h"}),
+        structurally_parsed=True,
     ),
     LanguageSpec(
         identifier="cpp",
@@ -66,6 +67,7 @@ _LANGUAGE_SPECS: tuple[LanguageSpec, ...] = (
                 ".inl",
             }
         ),
+        structurally_parsed=True,
     ),
     LanguageSpec(
         identifier="csharp",
@@ -76,6 +78,7 @@ _LANGUAGE_SPECS: tuple[LanguageSpec, ...] = (
         identifier="go",
         display_name="Go",
         extensions=frozenset({".go"}),
+        structurally_parsed=True,
     ),
     LanguageSpec(
         identifier="java",

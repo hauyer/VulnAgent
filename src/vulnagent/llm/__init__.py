@@ -9,6 +9,13 @@ from vulnagent.llm.openai_compatible import (
     OpenAICompatibleLLM,
 )
 from vulnagent.llm.router import LLMRouter
+from vulnagent.llm.ollama_local import (
+    DEFAULT_OLLAMA_BASE_URL,
+    OllamaGeneration,
+    OllamaLocalClient,
+    OllamaLocalError,
+    validate_ollama_base_url,
+)
 
 __all__ = [
     "BaseLLM",
@@ -22,4 +29,9 @@ __all__ = [
     "LLMRouter",
     "MockLLM",
     "OpenAICompatibleLLM",
+    "DEFAULT_OLLAMA_BASE_URL",
+    "OllamaGeneration",
+    "OllamaLocalClient",
+    "OllamaLocalError",
+    "validate_ollama_base_url",
 ]

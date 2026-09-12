@@ -15,6 +15,8 @@
 - `cwe_classification`：按规范化 CWE 分组的清册（含计数、最高严重度、组内 Finding 列表）；无 CWE 归入 `未关联CWE` 桶且恒在最后。属于清册视图，包含 `rejected`。
 - `evidence_timeline`：全部 Evidence 按 `created_at` 升序（同刻按 `evidence_id`）的时间线，标注其关联的 Finding/Verification，便于回放证据链如何形成。
 - `risk_summary`：风险摘要——最高风险等级、确定性中文标题句、计数与 `top_risks`。风险视图排除 `rejected`（在 `counts` 与标题句中以“已排除”计数）；`candidate/verifying/uncertain` 视为待复核，计入风险但优先级下移。
+- `software_code_security`：大模型服务代码安全章节；按统一 Finding 统计风险类型/等级，并为每条代码风险生成源码定位、CFG、污点路径、静态证据、动态摘要、智能体研判、独立复核和修复建议组成的卷宗。
+- `compliance_notice`：固定标注“仅用于安全审计与防御研究，仅限教学实验使用”。
 
 修复建议由 Report 内部小型 CWE/类型中文知识表与泛化兜底生成，仅作需人工复核的通用指引，绝不把文本当作权威确认（每项附 `disclaimer`）。本模块不修改任何公共 Contract。
 

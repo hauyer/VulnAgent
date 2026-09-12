@@ -54,7 +54,7 @@ async def test_indexes_a_python_only_project(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_mixed_project_reports_unsupported_language_without_crashing(
+async def test_mixed_project_parses_python_c_and_cpp_without_crashing(
     tmp_path: Path,
 ) -> None:
     (tmp_path / "main.py").write_text("def run():\n    return 1\n", encoding="utf-8")
@@ -66,12 +66,16 @@ async def test_mixed_project_reports_unsupported_language_without_crashing(
     assert result.languages == ["c", "cpp", "python"]
     assert set(result.files) == {"main.py", "util.c", "impl.cpp"}
     assert result.metadata["language_counts"] == {"c": 1, "cpp": 1, "python": 1}
-    assert result.metadata["parsed_languages"] == ["python"]
-    assert result.metadata["unsupported_languages"] == ["c", "cpp"]
-    assert result.metadata["parsed_file_count"] == 1
+    assert result.metadata["parsed_languages"] == ["c", "cpp", "python"]
+    assert result.metadata["unsupported_languages"] == []
+    assert result.metadata["parsed_file_count"] == 3
     assert {symbol["qualified_name"] for symbol in result.symbols} == {
-        "main.run"
+        "main.run",
+        "util.main",
+        "impl.f",
     }
+    assert result.metadata["native_analysis"]["engine"] == "tree_sitter"
+    assert set(result.metadata["native_analysis"]["files"]) == {"impl.cpp", "util.c"}
     assert result.metadata["error_count"] == 0
 
 
@@ -91,7 +95,7 @@ async def test_single_python_file_input(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_single_unsupported_source_file_is_indexed_only(tmp_path: Path) -> None:
+async def test_single_c_source_file_is_structurally_parsed(tmp_path: Path) -> None:
     source = tmp_path / "prog.c"
     source.write_text("int main(){return 0;}\n")
 
@@ -99,8 +103,9 @@ async def test_single_unsupported_source_file_is_indexed_only(tmp_path: Path) ->
 
     assert result.languages == ["c"]
     assert result.files == ["prog.c"]
-    assert result.metadata["unsupported_languages"] == ["c"]
-    assert result.symbols == []
+    assert result.metadata["unsupported_languages"] == []
+    assert result.metadata["parsed_languages"] == ["c"]
+    assert {symbol["qualified_name"] for symbol in result.symbols} == {"prog.main"}
     assert result.dependencies == []
 
 

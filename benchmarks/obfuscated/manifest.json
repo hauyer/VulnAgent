@@ -7,7 +7,7 @@
   "samples": [
     {
       "sample_id": "obfuscated-cracknotme-mcm2-20260212",
-      "acquisition_status": "materialized",
+      "acquisition_status": "pending_user_supplied",
       "qualification": "strict_closed_source",
       "software": {
         "name": "CrackNotMe's MCM 2.0",
@@ -48,7 +48,7 @@
     },
     {
       "sample_id": "obfuscated-desync-dotnet-20260612",
-      "acquisition_status": "materialized",
+      "acquisition_status": "pending_user_supplied",
       "qualification": "strict_closed_source",
       "software": {
         "name": "Desync's C# .NET Extended Obfuscation & Protection",

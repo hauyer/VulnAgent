@@ -2,7 +2,7 @@
 
 import pytest
 
-from vulnagent.analyzers.source.audit import PythonSourceAuditor
+from vulnagent.analyzers.source.audit import MultiLanguageSourceAuditor
 from vulnagent.analyzers.source.parser import SourceProjectParser
 from vulnagent.bootstrap import build_profile_application
 from vulnagent.settings import Settings
@@ -15,7 +15,7 @@ def test_v03_source_profile_wires_real_source_and_verification() -> None:
         Settings(vulnagent_profile="v03-source")
     )
     assert isinstance(services.capabilities.source_parser, SourceProjectParser)
-    assert isinstance(services.capabilities.source_auditor, PythonSourceAuditor)
+    assert isinstance(services.capabilities.source_auditor, MultiLanguageSourceAuditor)
     assert isinstance(services.capabilities.verifier, EvidenceVerifier)
 
 

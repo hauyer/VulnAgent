@@ -12,7 +12,10 @@ class AgentRoute(str, Enum):
 
     PLANNER = "planner"
     SOURCE_ANALYSIS = "source_analysis"
+    CODE_AUDIT = "code_audit"
     BINARY_ANALYSIS = "binary_analysis"
+    PROGRAM_RESTORATION = "program_restoration"
+    CODE_DEOBFUSCATION = "code_deobfuscation"
     FUZZ = "fuzz"
     VERIFICATION = "verification"
     REVIEWER = "reviewer"

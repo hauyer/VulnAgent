@@ -99,7 +99,12 @@ class SourceAuditAgent(BaseAgent):
                 task,
                 EvidenceType.SOURCE_LOCATION,
                 "Source audit recorded the candidate's concrete source location.",
-                {"location": location, "producer": finding.producer, "mock": is_mock},
+                {
+                    "finding_id": finding.vulnerability_id,
+                    "location": location,
+                    "producer": finding.producer,
+                    "mock": is_mock,
+                },
                 0.5 if is_mock else 0.9,
             )
         ]
@@ -111,7 +116,11 @@ class SourceAuditAgent(BaseAgent):
                     task,
                     EvidenceType.CODE_SNIPPET,
                     "Bounded source snippet at the detected sink.",
-                    {"snippet": snippet, "location": location},
+                    {
+                        "finding_id": finding.vulnerability_id,
+                        "snippet": snippet,
+                        "location": location,
+                    },
                     0.9,
                 )
             )
@@ -124,8 +133,25 @@ class SourceAuditAgent(BaseAgent):
                     EvidenceType.TAINT_PATH,
                     "Best-effort intraprocedural taint path from source to sink.",
                     {
+                        "finding_id": finding.vulnerability_id,
                         "path": taint_path,
                         "source_kinds": finding.metadata.get("source_kinds", []),
+                        "sink": finding.metadata.get("sink"),
+                    },
+                    0.8,
+                )
+            )
+
+        cfg_path = finding.metadata.get("cfg_path")
+        if isinstance(cfg_path, list) and cfg_path:
+            items.append(
+                self._evidence(
+                    task,
+                    EvidenceType.CFG_PATH,
+                    "Normalized control-flow path from function entry to the detected sink.",
+                    {
+                        "finding_id": finding.vulnerability_id,
+                        "path": cfg_path,
                         "sink": finding.metadata.get("sink"),
                     },
                     0.8,
@@ -140,6 +166,7 @@ class SourceAuditAgent(BaseAgent):
                     EvidenceType.TOOL_RESULT,
                     "Deterministic source-audit rule metadata.",
                     {
+                        "finding_id": finding.vulnerability_id,
                         "rule_id": rule_id,
                         "category": finding.metadata.get("category"),
                         "engine": finding.metadata.get("analysis_engine"),

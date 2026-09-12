@@ -13,6 +13,9 @@ import {
   Sparkles,
   ChevronDown,
   Languages,
+  ClipboardCheck,
+  FlaskConical,
+  Code2,
 } from "lucide-react";
 import { ActiveTab, Task } from "../types.js";
 import { useTranslation } from "../i18n.js";
@@ -44,23 +47,26 @@ export const Navbar: React.FC<NavbarProps> = ({
   const canRun = activeTask?.status === "created";
 
   const NAV_ITEMS: { id: ActiveTab; label: string; icon: any; badge?: string }[] = [
+    { id: "testlab", label: t("navTestLab"), icon: FlaskConical },
+    { id: "acceptance", label: t("navAcceptance"), icon: ClipboardCheck },
     { id: "dashboard", label: t("navDashboard"), icon: Sparkles },
     { id: "topology", label: t("navTopology"), icon: Layers, badge: "DAG" },
+    { id: "trace", label: t("navTrace"), icon: Activity },
     { id: "evidence", label: t("navEvidence"), icon: Database },
     { id: "vulnerabilities", label: t("navVulnerabilities"), icon: Shield },
+    { id: "poc", label: t("navPoc"), icon: Code2 },
     { id: "report", label: t("navReport"), icon: FileText },
-    { id: "trace", label: t("navTrace"), icon: Activity },
     { id: "api", label: t("navApi"), icon: Terminal },
   ];
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-[#dfd6bf] bg-[#eee8d5]/95 backdrop-blur-md">
-      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 flex items-center justify-between h-16 gap-4">
+      <div className="max-w-[2400px] mx-auto px-4 sm:px-6 flex items-center justify-between h-16 gap-4">
         {/* Left: Brand & Target Switcher */}
-        <div className="flex items-center gap-4 min-w-0">
+        <div className="flex items-center gap-4 min-w-0 shrink-0">
           <div
-            onClick={() => onSelectTab("dashboard")}
-            className="flex items-center gap-2.5 cursor-pointer group select-none"
+            onClick={() => onSelectTab("testlab")}
+            className="flex items-center gap-2.5 cursor-pointer group select-none shrink-0"
           >
             <div className="relative w-9 h-9 rounded-xl bg-gradient-to-br from-[#2aa198] to-[#268bd2] flex items-center justify-center text-white shadow-[0_2px_10px_rgba(42,161,152,0.25)]">
               <Shield className="w-5 h-5 fill-current" />
@@ -83,13 +89,13 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Active Target Selector Badge */}
           {tasks.length > 0 && activeTask && (
-            <div className="hidden md:flex items-center gap-1.5 pl-3 border-l border-[#dfd6bf]">
-              <span className="text-[11px] font-sans text-[#586e75]">{t("currentTarget")}:</span>
-              <div className="relative group">
+            <div className="hidden md:flex items-center gap-1.5 pl-3 border-l border-[#dfd6bf] min-w-0">
+              <span className="text-[11px] font-sans text-[#586e75] whitespace-nowrap shrink-0">{t("currentTarget")}:</span>
+              <div className="relative group min-w-0">
                 <select
                   value={activeTask.task_id}
                   onChange={(e) => onSelectTask(e.target.value)}
-                  className="bg-[#fdfaf3] border border-[#dfd6bf] hover:border-[#2aa198]/60 rounded-lg px-2.5 py-1 text-xs font-mono text-[#2aa198] font-medium focus:outline-none cursor-pointer appearance-none pr-7 max-w-[200px] truncate shadow-2xs"
+                  className="bg-[#fdfaf3] border border-[#dfd6bf] hover:border-[#2aa198]/60 rounded-lg px-2.5 py-1 text-xs font-mono text-[#2aa198] font-medium focus:outline-none cursor-pointer appearance-none pr-7 w-[clamp(140px,12vw,220px)] truncate shadow-2xs"
                 >
                   {tasks.map((t) => (
                     <option key={t.task_id} value={t.task_id}>
@@ -104,7 +110,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         {/* Center: Navigation Pill Tabs */}
-        <nav className="hidden 2xl:flex items-center gap-1 p-1 rounded-xl bg-[#e6ded0] border border-[#d8ceb8] shrink-0">
+        <nav className="hidden min-[2200px]:flex items-center justify-center gap-0.5 p-1 rounded-xl bg-[#e6ded0] border border-[#d8ceb8] min-w-0 flex-1 overflow-x-auto">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
@@ -112,7 +118,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <button
                 key={item.id}
                 onClick={() => onSelectTab(item.id)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all cursor-pointer select-none relative ${
+                className={`flex items-center gap-1.5 px-2.5 min-[2500px]:px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all cursor-pointer select-none relative shrink-0 ${
                   isActive
                     ? "bg-[#fdf6e3] text-[#2aa198] border border-[#2aa198]/30 shadow-2xs font-semibold"
                     : "text-[#586e75] hover:text-[#2b3638] hover:bg-[#eee8d5]"
@@ -188,7 +194,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       </div>
 
       {/* Mobile / Tablet Horizontal Navigation Scrollbar */}
-      <div className="2xl:hidden border-t border-[#dfd6bf] overflow-x-auto py-1 px-4 flex items-center gap-1 bg-[#eee8d5]">
+      <div className="min-[2200px]:hidden border-t border-[#dfd6bf] overflow-x-auto py-1 px-4 flex items-center gap-1 bg-[#eee8d5]">
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           const isActive = activeTab === item.id;

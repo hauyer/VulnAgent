@@ -33,6 +33,19 @@ def test_source_upload_returns_server_path_and_detected_language(monkeypatch, tm
     assert len(result["sha256"]) == 64
 
 
+def test_cpp_source_upload_is_supported(monkeypatch, tmp_path: Path) -> None:
+    _use_temp_upload_root(monkeypatch, tmp_path)
+    with TestClient(create_app()) as client:
+        response = client.post(
+            "/api/uploads",
+            params={"filename": "service.cpp", "target_type": "source"},
+            content=b"int main() { return 0; }\n",
+        )
+
+    assert response.status_code == 201
+    assert response.json()["language"] == "cpp"
+
+
 def test_binary_upload_requires_real_elf_or_pe_magic(monkeypatch, tmp_path: Path) -> None:
     _use_temp_upload_root(monkeypatch, tmp_path)
     with TestClient(create_app()) as client:

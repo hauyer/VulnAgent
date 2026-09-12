@@ -148,6 +148,12 @@ export const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose, repor
                         <span className="text-slate-300">
                           {f.location.file_path || f.location.module_name || f.location.binary_address}
                           {f.location.line_start && `:${f.location.line_start}`}
+                          {!f.location.file_path && f.location.binary_address && f.location.module_name
+                            ? ` · VA ${f.location.binary_address}`
+                            : ""}
+                          {!f.location.file_path && f.metadata?.binary_file_offset
+                            ? ` · file+${f.metadata.binary_file_offset}`
+                            : ""}
                         </span>
                       </div>
                     )}

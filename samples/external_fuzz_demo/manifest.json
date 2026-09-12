@@ -1,0 +1,102 @@
+{
+  "schema_version": "1.0",
+  "suite_id": "vulnagent-external-fuzz-demo-v1",
+  "purpose": "Local, authorized, deterministic dynamic-fuzz workflow demonstration for a university course.",
+  "safety": {
+    "scope": "local_course_environment_only",
+    "contains_external_exploit_payloads": false,
+    "opaque_executables_downloaded": false,
+    "note": "The PE files are locally compiled teaching derivatives. Dynamic execution still requires the user's per-target authorization acknowledgement."
+  },
+  "build": {
+    "platform": "Windows x86-64 PE",
+    "compiler": "MinGW-w64 GCC/G++ 15.2.0",
+    "compiler_flags": [
+      "-O0",
+      "-g",
+      "-fno-builtin"
+    ],
+    "packer": "UPX 5.2.1",
+    "script": "build.ps1"
+  },
+  "samples": [
+    {
+      "sample_id": "afl-training-vulnagent-upx",
+      "upstream": {
+        "repository": "https://github.com/mykter/afl-training",
+        "commit": "628042ea77a1c0ada826618f77130e4b5d810231",
+        "source_url": "https://raw.githubusercontent.com/mykter/afl-training/628042ea77a1c0ada826618f77130e4b5d810231/quickstart/vulnerable.c",
+        "source_path": "afl_training/vulnerable.c",
+        "source_sha256": "C1E2595F46528BDABCDE87776F21E71B455EB3E8B23F6D13DC8585F22B4CC5DD",
+        "license": "MIT",
+        "license_path": "afl_training/LICENSE.upstream.txt"
+      },
+      "adapter": {
+        "path": "afl_training/vulnagent_stdin_driver.c",
+        "sha256": "909C41161A2D0F6CC310F990DFC6AC6DA20A9C6B783C95223071A8F2F6E0B35B",
+        "behavior": "stdin adapter with controlled abnormal exit code 7"
+      },
+      "raw_binary": {
+        "path": "bin/afl-training-vulnagent.exe",
+        "sha256": "CD89829C42D7E717520949833D0238101C21479261F0F67F40B9186ECB5BBD8F"
+      },
+      "upload_binary": {
+        "path": "bin/afl-training-vulnagent-upx.exe",
+        "sha256": "44C1EC721F281B5AD36888BD812ADC3CE18FF99ADB523C14AFDFBD93B83F507D",
+        "format": "PE",
+        "architecture": "x86-64",
+        "protection": "UPX 5.2.1"
+      },
+      "ui_validation_input": "surpriseX!",
+      "expected_v04_result": {
+        "fuzz_executions": 8,
+        "runtime_trace_count": 8,
+        "crash_log_count": 1,
+        "report_available": true
+      }
+    },
+    {
+      "sample_id": "google-fuzzing-vulnagent-upx",
+      "upstream": {
+        "repository": "https://github.com/google/fuzzing",
+        "commit": "734e55f3cfed1adbb51bf6cb5c65b4c1197b7089",
+        "source_url": "https://raw.githubusercontent.com/google/fuzzing/734e55f3cfed1adbb51bf6cb5c65b4c1197b7089/tutorial/libFuzzer/fuzz_me.cc",
+        "source_path": "google_fuzzing/fuzz_me.cc",
+        "source_sha256": "536ECCAE75B5A2F8FC1F68BCAC3388D5FC40CA7A872B5A615C2EF39E310F91CA",
+        "license": "Apache-2.0",
+        "license_path": "google_fuzzing/LICENSE.upstream.txt"
+      },
+      "adapter": {
+        "path": "google_fuzzing/vulnagent_stdin_driver.cc",
+        "sha256": "FC44BD3C220FD71D4C305935731AC5AE3556654A109BCA9B3EA9524E748A65CE",
+        "behavior": "stdin adapter with controlled abnormal exit code 7"
+      },
+      "raw_binary": {
+        "path": "bin/google-fuzzing-vulnagent.exe",
+        "sha256": "7967419F0A0D484452F01BD634289153CEDB3A67E0AB59CDFE79A1809F9789B3"
+      },
+      "upload_binary": {
+        "path": "bin/google-fuzzing-vulnagent-upx.exe",
+        "sha256": "80A2BA552E29FF50675E0AF0BC9E97D039CF8C63ECD4B55075C8D3FB0A31A25D",
+        "format": "PE",
+        "architecture": "x86-64",
+        "protection": "UPX 5.2.1"
+      },
+      "ui_validation_input": "FU^Z",
+      "expected_v04_result": {
+        "fuzz_executions": 8,
+        "runtime_trace_count": 8,
+        "crash_log_count": 1,
+        "report_available": true
+      }
+    }
+  ],
+  "verified_at": "2026-09-12",
+  "verified_pipeline_summary": {
+    "state": "completed",
+    "target_count": 2,
+    "finding_count": 4,
+    "confirmed_count": 4,
+    "evidence_count": 70
+  }
+}

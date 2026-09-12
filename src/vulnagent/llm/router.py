@@ -65,7 +65,7 @@ class LLMRouter:
                         cached_rate=settings.kimi_cached_input_cost_per_million,
                         output_rate=settings.kimi_output_cost_per_million,
                         currency=settings.kimi_cost_currency,
-                        source_url="https://platform.kimi.com/docs/pricing/chat-k26",
+                        source_url="https://platform.kimi.com/docs/pricing/chat",
                         rate_label="standard_pay_as_you_go",
                     ),
                 ),

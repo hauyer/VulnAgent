@@ -418,7 +418,16 @@ class Orchestrator:
             AgentRoute.SOURCE_ANALYSIS:
                 TaskStatus.ANALYZING,
 
+            AgentRoute.CODE_AUDIT:
+                TaskStatus.ANALYZING,
+
             AgentRoute.BINARY_ANALYSIS:
+                TaskStatus.ANALYZING,
+
+            AgentRoute.PROGRAM_RESTORATION:
+                TaskStatus.ANALYZING,
+
+            AgentRoute.CODE_DEOBFUSCATION:
                 TaskStatus.ANALYZING,
 
             AgentRoute.FUZZ:

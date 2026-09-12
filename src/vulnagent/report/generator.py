@@ -5,12 +5,13 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from vulnagent.contracts import AnalysisContext, Evidence, ReportRequest, ReportResult, VerificationResult, VulnerabilityCandidate, VulnerabilityStatus
+from vulnagent.contracts import AnalysisContext, Evidence, EvidenceType, ReportRequest, ReportResult, VerificationResult, VulnerabilityCandidate, VulnerabilityStatus
 from vulnagent.evidence.graph import build_evidence_graph
 from vulnagent.report.remediation import DISCLAIMER, guidance_for, normalize_cwe, remediation_priority
 from vulnagent.report.severity import SEVERITY_ORDER, severity_cn, severity_label, severity_label_from_rank, severity_rank
 
 TOP_RISKS_LIMIT = 5
+COMPLIANCE_NOTICE = "仅用于安全审计与防御研究，仅限教学实验使用"
 _FINAL_STATUSES = ("confirmed", "verifying")
 
 # Deterministic Chinese note per effective finding status (VerificationResult wins).
@@ -55,7 +56,7 @@ class StructuredReportGenerator:
             artifact_uri=f"memory://reports/{request.task.task_id}",
             metadata={
                 "generator": "structured",
-                "version": "v0.3",
+                "version": "v0.4",
                 "input_mode": input_mode,
             },
         )
@@ -110,6 +111,7 @@ def _build_content(request: ReportRequest) -> dict[str, Any]:
         statuses[effective_status] += 1
 
     return {
+        "compliance_notice": COMPLIANCE_NOTICE,
         "task": request.task.model_dump(mode="json"),
         "summary": {
             "finding_count": len(request.findings),
@@ -123,6 +125,12 @@ def _build_content(request: ReportRequest) -> dict[str, Any]:
         "cwe_classification": _build_cwe_classification(request.findings),
         "evidence_timeline": _build_evidence_timeline(request.evidence, request.findings, request.verifications),
         "risk_summary": _build_risk_summary(request.findings, effective_status_by_finding, severity_by_finding),
+        "binary_protection_analysis": _build_binary_protection_analysis(request.evidence),
+        "software_code_security": _build_software_code_security(
+            request.findings,
+            request.evidence,
+            verifications_by_finding,
+        ),
         "evidence": [item.model_dump(mode="json") for item in request.evidence],
         "verifications": [item.model_dump(mode="json") for item in request.verifications],
         "evidence_graph": build_evidence_graph(request.findings, request.evidence, request.verifications),
@@ -137,6 +145,229 @@ def _build_content(request: ReportRequest) -> dict[str, Any]:
                 if finding.vulnerability_id not in verifications_by_finding
             ),
         }
+    }
+
+
+_SOFTWARE_CODE_TYPES = frozenset(
+    {
+        "integer_overflow",
+        "integer_underflow",
+        "integer_boundary_error",
+        "buffer_overflow",
+        "stack_buffer_overflow",
+        "heap_buffer_overflow",
+        "array_out_of_bounds",
+        "input_validation_missing",
+        "null_pointer_dereference",
+        "resource_leak",
+        "interface_access_control_missing",
+        "configuration_authorization_missing",
+    }
+)
+
+
+def _build_software_code_security(
+    findings: list[VulnerabilityCandidate],
+    evidence: list[Evidence],
+    verifications: dict[str, VerificationResult],
+) -> dict[str, Any]:
+    """Build a deterministic dossier chapter from public contracts only."""
+
+    selected = [
+        finding
+        for finding in findings
+        if finding.metadata.get("audit_domain") == "software_code"
+        or finding.vulnerability_type in _SOFTWARE_CODE_TYPES
+    ]
+    severity_counts = {label: 0 for label in _severity_labels()}
+    type_counts: dict[str, int] = {}
+    dossiers: list[dict[str, Any]] = []
+    for finding in selected:
+        severity_counts[severity_label(finding.severity)] += 1
+        classified_type = str(finding.metadata.get("risk_subtype") or finding.vulnerability_type)
+        type_counts[classified_type] = type_counts.get(classified_type, 0) + 1
+        verification = verifications.get(finding.vulnerability_id)
+        related = _evidence_for_finding(finding, verification, evidence)
+        model_assessment = next(
+            (
+                item.data
+                for item in related
+                if item.evidence_type is EvidenceType.MODEL_REASONING_SUMMARY
+                and item.source == "code_audit"
+            ),
+            None,
+        )
+        dynamic_result = next(
+            (
+                item.data
+                for item in related
+                if item.evidence_type in {
+                    EvidenceType.RUNTIME_TRACE,
+                    EvidenceType.CRASH_LOG,
+                    EvidenceType.SANITIZER_OUTPUT,
+                }
+                and item.source == "controlled_robustness"
+            ),
+            None,
+        )
+        evidence_chain = []
+        stages = (
+            ("source_location", {EvidenceType.SOURCE_LOCATION}),
+            ("control_flow_path", {EvidenceType.CFG_PATH}),
+            ("taint_path", {EvidenceType.TAINT_PATH, EvidenceType.DATA_FLOW}),
+            ("candidate_rule", {EvidenceType.TOOL_RESULT}),
+            ("dynamic_validation", {EvidenceType.RUNTIME_TRACE, EvidenceType.CRASH_LOG, EvidenceType.SANITIZER_OUTPUT}),
+            ("agent_assessment", {EvidenceType.MODEL_REASONING_SUMMARY}),
+            ("independent_verification", {EvidenceType.VERIFICATION_RESULT}),
+        )
+        for stage, kinds in stages:
+            for item in related:
+                if item.evidence_type in kinds:
+                    evidence_chain.append(
+                        {
+                            "stage": stage,
+                            "evidence_id": item.evidence_id,
+                            "source": item.source,
+                            "description": item.description,
+                        }
+                    )
+        location = finding.location.model_dump(mode="json") if finding.location else None
+        generic_remediation = _remediation_block(
+            finding,
+            _effective_status(finding, verification),
+            severity_rank(finding.severity),
+        )
+        dossiers.append(
+            {
+                "dossier_id": f"dossier-{finding.vulnerability_id}",
+                "finding_id": finding.vulnerability_id,
+                "vulnerability_type": finding.vulnerability_type,
+                "risk_subtype": finding.metadata.get("risk_subtype"),
+                "cwe_id": normalize_cwe(finding.cwe_id),
+                "title": finding.title,
+                "risk_level": severity_label(finding.severity),
+                "status": _effective_status(finding, verification),
+                "source_location": location,
+                "control_flow_path": finding.metadata.get("cfg_path", []),
+                "taint_path": finding.metadata.get("taint_path", []),
+                "candidate_rule": {
+                    "rule_id": finding.metadata.get("rule_id"),
+                    "engine": finding.metadata.get("analysis_engine"),
+                    "sink": finding.metadata.get("sink"),
+                    "guard_observed": finding.metadata.get("guard_observed"),
+                },
+                "static_evidence": [
+                    item.model_dump(mode="json")
+                    for item in related
+                    if item.evidence_type in {
+                        EvidenceType.SOURCE_LOCATION,
+                        EvidenceType.CODE_SNIPPET,
+                        EvidenceType.CFG_PATH,
+                        EvidenceType.TAINT_PATH,
+                        EvidenceType.DATA_FLOW,
+                        EvidenceType.TOOL_RESULT,
+                    }
+                ],
+                "dynamic_validation": dynamic_result,
+                "agent_assessment": model_assessment,
+                "independent_verification": (
+                    verification.model_dump(mode="json") if verification else None
+                ),
+                "remediation": {
+                    **generic_remediation,
+                    "agent_summary": (
+                        model_assessment.get("remediation_summary")
+                        if isinstance(model_assessment, dict)
+                        else None
+                    ),
+                    "agent_actions": (
+                        model_assessment.get("remediation_actions", [])
+                        if isinstance(model_assessment, dict)
+                        else []
+                    ),
+                },
+                "evidence_chain": evidence_chain,
+                "compliance_notice": COMPLIANCE_NOTICE,
+            }
+        )
+    return {
+        "title": "大模型服务代码安全审计",
+        "finding_count": len(selected),
+        "risk_level_distribution": severity_counts,
+        "vulnerability_type_distribution": dict(sorted(type_counts.items())),
+        "dossiers": dossiers,
+        "compliance_notice": COMPLIANCE_NOTICE,
+    }
+
+
+def _evidence_for_finding(
+    finding: VulnerabilityCandidate,
+    verification: VerificationResult | None,
+    evidence: list[Evidence],
+) -> list[Evidence]:
+    linked_ids = set(finding.evidence_ids)
+    if verification is not None:
+        linked_ids.update(verification.evidence_ids)
+    return [
+        item
+        for item in evidence
+        if item.evidence_id in linked_ids
+        or item.data.get("finding_id") == finding.vulnerability_id
+        or item.data.get("vulnerability_id") == finding.vulnerability_id
+    ]
+
+
+def _build_binary_protection_analysis(evidence: list[Evidence]) -> dict[str, Any] | None:
+    """Build the dedicated protected-program chapter from evidence only."""
+
+    restoration = next((item for item in evidence if item.source == "program_restoration"), None)
+    deobfuscation = next((item for item in evidence if item.source == "code_deobfuscation"), None)
+    reverse = next((item for item in evidence if item.source == "binary_reverse"), None)
+    if restoration is None and deobfuscation is None and reverse is None:
+        return None
+    restore_data = restoration.data if restoration is not None else {}
+    deobf_data = deobfuscation.data if deobfuscation is not None else {}
+    reverse_data = reverse.data if reverse is not None else {}
+    protection = restore_data.get("protection", {})
+    selected = protection.get("selected") if isinstance(protection, dict) else None
+    readability = deobf_data.get("readability", {})
+    instruction_recovery = deobf_data.get("instruction_recovery", {})
+    functions = instruction_recovery.get("functions", []) if isinstance(instruction_recovery, dict) else []
+    validation = restore_data.get("validation", {})
+    return {
+        "title": "二进制程序保护分析专项",
+        "protection": selected if isinstance(selected, dict) else None,
+        "declared_protection": protection.get("declared_protection") if isinstance(protection, dict) else None,
+        "strategy": restore_data.get("strategy", []),
+        "restoration": {
+            "status": restore_data.get("status", "not_run"),
+            "success": bool(restore_data.get("success", False)),
+            "metrics": restore_data.get("metrics", {}),
+            "validation": validation if isinstance(validation, dict) else {},
+            "records": restore_data.get("records", []),
+        },
+        "reverse_analysis": {
+            "function_count": reverse_data.get("function_count", 0),
+            "pseudocode_count": reverse_data.get("pseudocode_count", 0),
+            "cfg_node_count": reverse_data.get("cfg_node_count", 0),
+            "parseable": validation.get("parseable", bool(reverse)) if isinstance(validation, dict) else bool(reverse),
+        },
+        "deobfuscation": {
+            "detected_types": deobf_data.get("detected_types", []),
+            "readability": readability if isinstance(readability, dict) else {},
+            "recovered_function_count": len(functions) if isinstance(functions, list) else 0,
+            "string_count": deobf_data.get("string_recovery", {}).get("decoded_count", 0),
+            "before_after_examples": functions[:3] if isinstance(functions, list) else [],
+        },
+        "evidence_chain": [
+            {"stage": stage, "evidence_id": item.evidence_id, "source": item.source}
+            for stage, item in (
+                ("protection_identification_and_restoration", restoration),
+                ("structure_and_decompilation", reverse),
+                ("deobfuscation_and_readability", deobfuscation),
+            )
+            if item is not None
+        ],
     }
 
 
@@ -271,6 +502,10 @@ def _build_evidence_timeline(
     for verification in verifications:
         for evidence_id in verification.evidence_ids:
             verifications_by_evidence.setdefault(evidence_id, set()).add(verification.vulnerability_id)
+    for item in evidence:
+        direct_id = item.data.get("finding_id") or item.data.get("vulnerability_id")
+        if isinstance(direct_id, str):
+            findings_by_evidence.setdefault(item.evidence_id, set()).add(direct_id)
 
     ordered = sorted(evidence, key=lambda item: (_utc_epoch(item.created_at), item.evidence_id))
     timeline: list[dict[str, Any]] = []

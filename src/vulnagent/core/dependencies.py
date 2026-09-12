@@ -49,6 +49,12 @@ class CapabilityBundle:
 
     report_generator: ReportGenerator
 
+    # V0.5 protected-program capabilities are optional so existing embedders
+    # can retain the frozen V0.4 bundle while the composition root enables them.
+    program_restorer: Any | None = None
+    code_deobfuscator: Any | None = None
+    code_audit_enabled: bool = False
+
     def __post_init__(self) -> None:
         """Fail fast when an injected capability is structurally invalid.
 
@@ -109,6 +115,20 @@ class CapabilityBundle:
             "generate",
             "report_generator",
         )
+
+        if self.program_restorer is not None:
+            self._require_async_callable(
+                self.program_restorer,
+                "restore",
+                "program_restorer",
+            )
+
+        if self.code_deobfuscator is not None:
+            self._require_async_callable(
+                self.code_deobfuscator,
+                "restore",
+                "code_deobfuscator",
+            )
 
     @staticmethod
     def _require_async_callable(

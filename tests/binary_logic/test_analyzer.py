@@ -47,3 +47,28 @@ async def test_pseudocode_pins_address() -> None:
     ))
     loc = next(l for l in out["locations"] if l["matched"].lower() == "license_key")
     assert loc["address"] == "0x401200"
+
+
+async def test_pseudocode_itself_produces_explainable_logic_location() -> None:
+    out = await LogicAnalyzer().inspect(_result(
+        metadata={"reverse_tool": {"pseudocode": {"0x401240": "if (verify_password(user)) activate_license();"}}},
+    ))
+
+    categories = {item["category"] for item in out["locations"]}
+    assert {"authentication", "registration"}.issubset(categories)
+    assert all(
+        item["address"] == "0x401240"
+        for item in out["locations"]
+        if item["source"] == "pseudocode"
+    )
+
+
+async def test_printable_base64_is_normalized_without_execution() -> None:
+    out = await LogicAnalyzer().inspect(_result(strings=["bGljZW5zZV9rZXk="]))
+
+    assert out["deobfuscation"]["decoded_count"] == 1
+    assert out["deobfuscation"]["items"][0]["decoded"] == "license_key"
+    assert any(
+        item["category"] == "registration" and item["source"] == "normalized_string"
+        for item in out["locations"]
+    )

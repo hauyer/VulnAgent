@@ -155,6 +155,36 @@ export const AgentTopologyView: React.FC<AgentTopologyViewProps> = ({
       outputContract: ["ReportResult", "RemediationRoadmap"],
       evidenceTypesProduced: [],
     },
+    {
+      id: "program_restoration_agent",
+      name: language === "zh" ? "Program Restoration 程序还原智能体" : "Program Restoration Agent",
+      role: language === "zh" ? "保护识别、内存映像与 PE/DEX 结构修复" : "Protection Classification & Structure Recovery",
+      module: "src/vulnagent/agents/program_restoration_agent.py",
+      category: "analysis",
+      status: "completed",
+      description:
+        language === "zh"
+          ? "融合节区、熵、入口点与导入特征，自主选择静态副本去壳或隔离动态快照；重建 IAT/PE 结构后必须通过解析器校验。"
+          : "Fuses section, entropy, entry-point and import evidence, selects a bounded strategy, and validates rebuilt PE/DEX artifacts.",
+      inputContract: ["AuthorizedBinary", "ProtectionPolicy"],
+      outputContract: ["RestorationEvidence", "ValidatedArtifact"],
+      evidenceTypesProduced: ["tool_result"],
+    },
+    {
+      id: "code_deobfuscation_agent",
+      name: language === "zh" ? "Code Deobfuscation 混淆还原智能体" : "Code Deobfuscation Agent",
+      role: language === "zh" ? "OLLVM 四类模式还原与语义可读性增强" : "OLLVM Recovery & Semantic Readability",
+      module: "src/vulnagent/agents/code_deobfuscation_agent.py",
+      category: "analysis",
+      status: "completed",
+      description:
+        language === "zh"
+          ? "检测控制流平坦化、虚假控制流、指令替换和字符串加密，保留前后对比；大模型只做辅助业务语义标注，不修改可执行字节。"
+          : "Recovers four OLLVM pattern families, preserves before/after evidence, and limits the LLM to auxiliary annotations.",
+      inputContract: ["BinaryAnalysisResult", "RuntimeTrace"],
+      outputContract: ["RecoveredCFG", "ReadabilityAssessment"],
+      evidenceTypesProduced: ["tool_result", "model_reasoning_summary"],
+    },
   ];
 
   const [selectedAgent, setSelectedAgent] = useState<AgentNodeInfo>(AGENT_NODES[0]);
@@ -337,6 +367,35 @@ export const AgentTopologyView: React.FC<AgentTopologyViewProps> = ({
                   {language === "zh" ? "反汇编 • CFG • 符号提取" : "Disassembly • CFG • Strings"}
                 </div>
               </button>
+            </div>
+
+            {/* Protected-binary branch: restoration and semantic recovery */}
+            <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {[AGENT_NODES[8], AGENT_NODES[9]].map((agent, index) => (
+                <button
+                  key={agent.id}
+                  onClick={() => setSelectedAgent(agent)}
+                  className={`p-3.5 rounded-xl border transition-all cursor-pointer text-left ${
+                    selectedAgent.id === agent.id
+                      ? "bg-[#f4f1f9] border-[#6c71c4] ring-2 ring-[#6c71c4]/20 shadow-sm"
+                      : "bg-[#fcf8ed] border-[#dfd6bf] hover:border-[#cbbea2]"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="text-[10px] font-mono text-[#6c71c4] uppercase font-bold">
+                      {index === 0 ? (language === "zh" ? "受保护映像还原" : "Image Restoration") : (language === "zh" ? "混淆语义还原" : "Semantic Recovery")}
+                    </span>
+                    <span className="px-1.5 rounded text-[9px] font-mono bg-[#eee8f5] text-[#6c71c4]">PE · DEX</span>
+                  </div>
+                  <div className="text-xs font-bold text-[#2b3638] flex items-center gap-2">
+                    {index === 0 ? <ShieldCheck className="w-4 h-4 text-[#6c71c4]" /> : <Terminal className="w-4 h-4 text-[#6c71c4]" />}
+                    <span>{index === 0 ? "Program Restoration Agent" : "Code Deobfuscation Agent"}</span>
+                  </div>
+                  <div className="text-[10px] text-[#586e75] mt-1 font-mono">
+                    {index === 0 ? "识别 • OEP • IAT/PE 修复" : "CFG • 指令 • 字符串 • 语义"}
+                  </div>
+                </button>
+              ))}
             </div>
 
             {/* Connecting Arrow to Fuzz */}

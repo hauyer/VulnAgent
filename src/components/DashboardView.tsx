@@ -31,6 +31,7 @@ import {
   Evidence,
   DomainEvent,
   ActiveTab,
+  LLMScanSummary,
 } from "../types.js";
 import { useTranslation } from "../i18n.js";
 
@@ -49,7 +50,20 @@ interface DashboardViewProps {
     language?: string,
     fileFormat?: string,
     preserveScroll?: boolean,
+    metadata?: Record<string, unknown>,
   ) => Promise<boolean>;
+}
+
+type PipelineStageState =
+  | "completed"
+  | "not_run"
+  | "not_enabled"
+  | "not_required"
+  | "failed";
+
+interface PipelineStageView {
+  name: string;
+  state: PipelineStageState;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
@@ -68,9 +82,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [customPath, setCustomPath] = useState("");
   const [customType, setCustomType] = useState<"source" | "binary">("source");
   const [customLang, setCustomLang] = useState("auto");
+  const [customReverseAuthorized, setCustomReverseAuthorized] = useState(false);
+  const [customUploadSha256, setCustomUploadSha256] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadInFlightRef = useRef(false);
+  const uploadAbortRef = useRef<AbortController | null>(null);
 
   const confirmedFindings = findings.filter((f) => f.status === "confirmed");
   const highlightedFinding = confirmedFindings[0] || findings[0];
@@ -102,6 +120,34 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   )
     .slice(0, 3)
     .join(", ");
+  const llmScanSummary = task.metadata?.llm_vulnerability_scan as LLMScanSummary | undefined;
+  const llmModelName = typeof task.metadata?.model_name === "string" ? task.metadata.model_name : null;
+  const softwareCodeFindings = findings.filter((item) =>
+    item.metadata?.audit_domain === "software_code"
+    || [
+      "integer_overflow", "integer_underflow", "integer_boundary_error",
+      "buffer_overflow", "stack_buffer_overflow", "heap_buffer_overflow",
+      "array_out_of_bounds", "input_validation_missing", "null_pointer_dereference",
+      "resource_leak", "interface_access_control_missing", "configuration_authorization_missing",
+    ].includes(item.vulnerability_type),
+  );
+  const codeSeverity = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"].reduce<Record<string, number>>(
+    (counts, level) => ({ ...counts, [level]: softwareCodeFindings.filter((item) => item.severity === level).length }),
+    {},
+  );
+  const failedRoutes = new Set(
+    events
+      .filter(
+        (event) =>
+          event.event_type === "agent_finished" && event.payload?.success === false,
+      )
+      .map((event) => String(event.payload?.route || event.producer)),
+  );
+  const fuzzAuthorized =
+    task.target.metadata?.fuzz_authorized === true ||
+    task.target.metadata?.dynamic_validation === true;
+  const fuzzReached = routeHistory.includes("fuzz");
+  const verificationReached = routeHistory.includes("verification");
 
   const benchmarks = [
     {
@@ -160,24 +206,61 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   const handleCustomSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!customPath.trim()) return;
+    if (uploadInFlightRef.current || isUploading || !customPath.trim()) return;
     const succeeded = await onLaunchNewTask(
       customPath.trim(),
       customType,
       customType === "source" ? inferLanguage(customPath.trim()) : undefined,
       customType === "binary" ? inferFileFormat(customPath.trim()) : undefined,
       true,
+      customType === "binary"
+        ? {
+            authorization_confirmed: customReverseAuthorized,
+            reverse_analysis_enabled: customReverseAuthorized,
+            test_lab_category: "custom_binary",
+            dynamic_validation: false,
+            fuzz_authorized: false,
+            ...(customUploadSha256 ? { expected_sha256: customUploadSha256 } : {}),
+          }
+        : undefined,
     );
-    if (succeeded) setShowCustomLauncher(false);
+    if (succeeded) {
+      setCustomPath("");
+      setCustomReverseAuthorized(false);
+      setCustomUploadSha256(null);
+      setUploadMessage(null);
+      setShowCustomLauncher(false);
+    }
+  };
+
+  const handleCustomCancel = () => {
+    uploadAbortRef.current?.abort();
+    uploadAbortRef.current = null;
+    uploadInFlightRef.current = false;
+    setIsUploading(false);
+    setCustomPath("");
+    setCustomReverseAuthorized(false);
+    setCustomUploadSha256(null);
+    setUploadMessage(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    setShowCustomLauncher(false);
   };
 
   const handleLocalFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    setCustomPath(file.name);
+    // Do not expose the browser-only basename as a runnable server path while
+    // the upload is in flight.  A fast submit previously created failed tasks
+    // whose target path was only e.g. "sample.exe".
+    uploadInFlightRef.current = true;
+    setCustomPath("");
+    setCustomReverseAuthorized(false);
+    setCustomUploadSha256(null);
     setIsUploading(true);
     setUploadMessage(language === "zh" ? "正在上传并校验文件类型…" : "Uploading and validating file type…");
+    const uploadController = new AbortController();
+    uploadAbortRef.current = uploadController;
     try {
       const response = await fetch(
         `/api/uploads?filename=${encodeURIComponent(file.name)}&target_type=${customType}`,
@@ -185,6 +268,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           method: "POST",
           headers: { "Content-Type": "application/octet-stream" },
           body: file,
+          signal: uploadController.signal,
         },
       );
       if (!response.ok) {
@@ -193,59 +277,135 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       }
       const uploaded = await response.json();
       setCustomPath(uploaded.stored_path);
+      setCustomUploadSha256(
+        typeof uploaded.sha256 === "string" ? uploaded.sha256 : null,
+      );
       if (uploaded.language) setCustomLang(uploaded.language);
       setUploadMessage(
         language === "zh"
-          ? `上传完成（${(uploaded.size_bytes / 1024).toFixed(1)} KiB），正在启动自动分析…`
-          : `Uploaded (${(uploaded.size_bytes / 1024).toFixed(1)} KiB); starting automatic analysis…`,
-      );
-      const succeeded = await onLaunchNewTask(
-        uploaded.stored_path,
-        customType,
-        uploaded.language || undefined,
-        uploaded.file_format || undefined,
-        true,
-      );
-      setUploadMessage(
-        succeeded
-          ? (language === "zh" ? "文件已上传，自动分析已完成。" : "Upload and automatic analysis completed.")
-          : (language === "zh" ? "文件已上传，但自动分析失败；请查看上方提示。" : "Uploaded, but analysis failed; see the notice above."),
+          ? `文件已就绪（${(uploaded.size_bytes / 1024).toFixed(1)} KiB），尚未开始审计。请确认参数后点击“初始化并开始审计”。`
+          : `File ready (${(uploaded.size_bytes / 1024).toFixed(1)} KiB). Review the parameters, then select “Initialize & Scan Target”.`,
       );
     } catch (error) {
-      setUploadMessage(error instanceof Error ? error.message : "Upload failed");
+      if (!(error instanceof DOMException && error.name === "AbortError")) {
+        setUploadMessage(error instanceof Error ? error.message : "Upload failed");
+      }
     } finally {
+      if (uploadAbortRef.current === uploadController) uploadAbortRef.current = null;
+      uploadInFlightRef.current = false;
       setIsUploading(false);
     }
   };
 
-  const pipelineStages = [
+  const pipelineStages: PipelineStageView[] = llmScanSummary ? [
     {
-      name: language === "zh" ? "1. 目标探查" : "1. Profiling",
-      reached: task.status !== "created",
+      name: language === "zh" ? "1. 本地准入" : "1. Local intake",
+      state: "completed",
     },
     {
-      name: language === "zh" ? "2. 智能规划" : "2. Planning",
-      reached: routeHistory.includes("planner"),
+      name: language === "zh" ? "2. 用例编排" : "2. Probe plan",
+      state: llmScanSummary.total_cases > 0 ? "completed" : "not_run",
     },
     {
-      name: language === "zh" ? "3. 静态/逆向" : "3. Source / Binary",
-      reached:
-        routeHistory.includes("source_analysis") ||
-        routeHistory.includes("binary_analysis"),
+      name: language === "zh" ? "3. 模型探测" : "3. Model probing",
+      state: llmScanSummary.completed_cases > 0 ? "completed" : "not_run",
     },
     {
-      name: language === "zh" ? "4. 动态模糊" : "4. Dynamic Fuzz",
-      reached: routeHistory.includes("fuzz"),
+      name: language === "zh" ? "4. Canary 验证" : "4. Canary verification",
+      state:
+        llmScanSummary.completed_cases === llmScanSummary.total_cases
+          ? "completed"
+          : "not_run",
     },
     {
-      name: language === "zh" ? "5. 独立复核" : "5. Verification",
-      reached: routeHistory.includes("verification"),
+      name: language === "zh" ? "5. 独立复核" : "5. Evidence review",
+      state:
+        llmScanSummary.triggered_count === 0
+          ? "not_required"
+          : verificationEvidence.length > 0
+            ? "completed"
+            : "not_run",
     },
     {
       name: language === "zh" ? "6. 审计报告" : "6. Reporting",
-      reached: routeHistory.includes("report"),
+      state: task.status === "completed" ? "completed" : "not_run",
+    },
+  ] : [
+    {
+      name: language === "zh" ? "1. 目标探查" : "1. Profiling",
+      state: task.status !== "created" ? "completed" : "not_run",
+    },
+    {
+      name: language === "zh" ? "2. 智能规划" : "2. Planning",
+      state: failedRoutes.has("planner")
+        ? "failed"
+        : routeHistory.includes("planner")
+          ? "completed"
+          : "not_run",
+    },
+    {
+      name: language === "zh" ? "3. 静态/逆向" : "3. Source / Binary",
+      state:
+        failedRoutes.has("source_analysis") || failedRoutes.has("binary_analysis")
+          ? "failed"
+          : routeHistory.includes("source_analysis") ||
+              routeHistory.includes("binary_analysis")
+            ? "completed"
+            : "not_run",
+    },
+    {
+      name: language === "zh" ? "4. 动态模糊" : "4. Dynamic Fuzz",
+      state: failedRoutes.has("fuzz")
+        ? "failed"
+        : fuzzReached
+          ? "completed"
+          : !fuzzAuthorized && task.status !== "created"
+            ? "not_enabled"
+            : "not_run",
+    },
+    {
+      name: language === "zh" ? "5. 独立复核" : "5. Verification",
+      state: failedRoutes.has("verification")
+        ? "failed"
+        : verificationReached
+          ? "completed"
+          : task.status === "completed" && findings.length === 0
+            ? "not_required"
+            : "not_run",
+    },
+    {
+      name: language === "zh" ? "6. 审计报告" : "6. Reporting",
+      state: failedRoutes.has("report")
+        ? "failed"
+        : routeHistory.includes("report")
+          ? "completed"
+          : "not_run",
     },
   ];
+
+  const stageLabel = (state: PipelineStageState): string => {
+    if (state === "completed") return language === "zh" ? "已完成" : "Completed";
+    if (state === "not_enabled") return language === "zh" ? "未启用" : "Not enabled";
+    if (state === "not_required") return language === "zh" ? "无需执行" : "Not required";
+    if (state === "failed") return language === "zh" ? "失败" : "Failed";
+    return language === "zh" ? "未执行" : "Not run";
+  };
+
+  const verificationDisplay =
+    verificationConfidence !== null
+      ? `${(verificationConfidence * 100).toFixed(1)}%`
+      : task.status === "completed" && findings.length === 0
+        ? language === "zh" ? "无需复核" : "Not required"
+        : task.status === "failed"
+          ? language === "zh" ? "未完成" : "Incomplete"
+          : language === "zh" ? "待复核" : "Pending";
+
+  const coverageDisplay =
+    coveragePercent !== null
+      ? `${coveragePercent.toFixed(1)}%`
+      : !fuzzReached
+        ? language === "zh" ? "不适用" : "Not applicable"
+        : language === "zh" ? "未采集" : "Not collected";
 
   return (
     <div className="space-y-6">
@@ -325,22 +485,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <div
                 key={stage.name}
                 className={`min-h-14 p-2 rounded-lg border text-center transition-all relative overflow-hidden shadow-2xs flex flex-col items-center justify-center gap-1 ${
-                  stage.reached
+                  stage.state === "completed"
                     ? "bg-[#fdfaf3] border-[#b9d9d6]"
-                    : "bg-[#fdfaf3] border-[#dfd6bf]"
+                    : stage.state === "failed"
+                      ? "bg-[#fff4f1] border-[#dc322f]/40"
+                      : "bg-[#fdfaf3] border-[#dfd6bf]"
                 }`}
               >
-                {stage.reached && (
+                {stage.state === "completed" && (
                   <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-[#2aa198] to-[#859900]" />
                 )}
-                <span className={`text-[11px] font-semibold truncate block ${stage.reached ? "text-[#2b3638]" : "text-[#657b83]"}`}>
+                {stage.state === "failed" && (
+                  <div className="absolute top-0 left-0 right-0 h-0.5 bg-[#dc322f]" />
+                )}
+                <span className={`text-[11px] font-semibold truncate block ${stage.state === "completed" ? "text-[#2b3638]" : stage.state === "failed" ? "text-[#dc322f]" : "text-[#657b83]"}`}>
                   {stage.name}
                 </span>
-                <span className={`text-[10px] flex items-center gap-1 ${stage.reached ? "text-[#859900]" : "text-[#839496]"}`}>
-                  {stage.reached ? <Check className="w-3 h-3" /> : <Circle className="w-3 h-3" />}
-                  {stage.reached
-                    ? (language === "zh" ? "已完成" : "Completed")
-                    : (language === "zh" ? "未执行" : "Not run")}
+                <span className={`text-[10px] flex items-center gap-1 ${stage.state === "completed" ? "text-[#859900]" : stage.state === "failed" ? "text-[#dc322f]" : "text-[#839496]"}`}>
+                  {stage.state === "completed" ? <Check className="w-3 h-3" /> : stage.state === "failed" ? <ShieldAlert className="w-3 h-3" /> : <Circle className="w-3 h-3" />}
+                  {stageLabel(stage.state)}
                 </span>
               </div>
             ))}
@@ -363,7 +526,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
           <div className="flex items-baseline gap-2">
             <span className="text-3xl font-extrabold font-mono text-[#2b3638]">
-              {coveragePercent === null ? "N/A" : `${coveragePercent.toFixed(1)}%`}
+              {coverageDisplay}
             </span>
           </div>
           <p className="text-[11px] text-[#586e75] mt-2 font-mono">
@@ -372,8 +535,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 ? `来源：${coverageEvidence.source}`
                 : `Source: ${coverageEvidence.source}`
               : language === "zh"
-                ? "本任务未生成覆盖率证据"
-                : "No coverage evidence for this task"}
+                ? fuzzReached
+                  ? "已进入动态模糊，但未生成覆盖率证据"
+                  : "静态只读任务未启用动态模糊，覆盖率不适用"
+                : fuzzReached
+                  ? "Dynamic fuzzing ran without coverage evidence"
+                  : "Coverage is not applicable to this static-only task"}
           </p>
         </div>
 
@@ -398,8 +565,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 ? `记录 ${crashCount} 条崩溃证据`
                 : `${crashCount} crash evidence records`
               : language === "zh"
-                ? "本任务未执行模糊测试"
-                : "Fuzzing was not executed for this task"}
+                ? fuzzReached
+                  ? "已进入模糊测试，但未执行目标"
+                  : "动态模糊未启用；本次保持静态只读"
+                : fuzzReached
+                  ? "Fuzzing was reached, but the target was not executed"
+                  : "Dynamic fuzzing was not enabled; this run stayed read-only"}
           </p>
         </div>
 
@@ -416,16 +587,26 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
           <div className="flex items-baseline gap-2">
             <span className="text-3xl font-extrabold font-mono text-[#859900]">
-              {verificationConfidence === null ? "N/A" : `${(verificationConfidence * 100).toFixed(1)}%`}
+              {verificationDisplay}
             </span>
             <span className="text-xs font-mono text-[#859900] font-bold">
-              {confirmedFindings.length} {language === "zh" ? "项确认" : "confirmed"}
+              {findings.length === 0
+                ? language === "zh" ? "0 个候选" : "0 candidates"
+                : `${confirmedFindings.length} ${language === "zh" ? "项确认" : "confirmed"}`}
             </span>
           </div>
           <p className="text-[11px] text-[#586e75] mt-2 font-mono">
-            {language === "zh"
-              ? `${verificationEvidence.length} 条独立复核证据`
-              : `${verificationEvidence.length} independent verification records`}
+            {task.status === "failed"
+              ? language === "zh"
+                ? "前序分析阶段失败，因此未进入独立复核"
+                : "An earlier analysis stage failed, so independent review was not reached"
+              : findings.length === 0 && task.status === "completed"
+              ? language === "zh"
+                ? "静态分析未产生漏洞候选，因此无需生成复核记录"
+                : "Static analysis produced no candidates, so no review record was required"
+              : language === "zh"
+                ? `${verificationEvidence.length}/${findings.length} 个候选已生成独立复核记录`
+                : `${verificationEvidence.length}/${findings.length} candidates have independent review records`}
           </p>
         </div>
 
@@ -449,6 +630,73 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </p>
         </div>
       </div>
+
+      {softwareCodeFindings.length > 0 && (
+        <section className="p-5 rounded-2xl bg-[#f4eedb] border border-[#dfd6bf] shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.18em] font-mono text-[#6c71c4] font-bold">SOFTWARE CODE SECURITY</div>
+              <h3 className="text-sm font-bold text-[#2b3638] mt-1">{language === "zh" ? "大模型服务代码风险统计" : "LLM service code-risk metrics"}</h3>
+            </div>
+            <button onClick={() => onNavigateTab("vulnerabilities")} className="rounded-full border border-[#c8c0dc] bg-[#fdfaf3] px-3 py-1 text-[11px] font-mono text-[#6c71c4] hover:border-[#6c71c4]">
+              {language === "zh" ? "查看代码安全卷宗" : "Open code dossiers"}
+            </button>
+          </div>
+          <div className="grid grid-cols-3 lg:grid-cols-6 gap-2.5">
+            {[
+              [language === "zh" ? "代码风险" : "Code risks", softwareCodeFindings.length, "text-[#6c71c4]"],
+              [language === "zh" ? "严重" : "Critical", codeSeverity.CRITICAL || 0, "text-[#dc322f]"],
+              [language === "zh" ? "高危" : "High", codeSeverity.HIGH || 0, "text-[#cb4b16]"],
+              [language === "zh" ? "中危" : "Medium", codeSeverity.MEDIUM || 0, "text-[#b58900]"],
+              [language === "zh" ? "低危" : "Low", codeSeverity.LOW || 0, "text-[#268bd2]"],
+              [language === "zh" ? "信息" : "Info", codeSeverity.INFO || 0, "text-[#586e75]"],
+            ].map(([label, value, color]) => (
+              <button key={String(label)} onClick={() => onNavigateTab("vulnerabilities")} className="text-left rounded-xl bg-[#fdfaf3] border border-[#dfd6bf] px-3 py-3 hover:border-[#6c71c4] transition-colors">
+                <div className="text-[10px] text-[#657b83] font-mono uppercase">{label}</div>
+                <div className={`text-2xl font-black font-mono mt-1 ${color}`}>{value}</div>
+              </button>
+            ))}
+          </div>
+          <p className="mt-3 text-[11px] text-[#586e75]">{language === "zh" ? "统计来自统一 Finding；源码位置、CFG、污点路径、动态结果和智能体研判均在漏洞卷宗中按 Evidence ID 追踪。" : "Counts use canonical findings; source, CFG, taint, runtime, and agent evidence remain traceable by Evidence ID."}</p>
+        </section>
+      )}
+
+      {llmScanSummary && (
+        <section className="p-5 rounded-2xl bg-[#eef7f6] border border-[#bfe3e0] shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.18em] font-mono text-[#2aa198] font-bold">
+                LLM VULNERABILITY TELEMETRY · LOCAL OLLAMA
+              </div>
+              <h3 className="text-sm font-bold text-[#2b3638] mt-1">
+                {language === "zh" ? "开源大模型漏洞分类统计" : "Open-source LLM vulnerability metrics"}
+              </h3>
+            </div>
+            <span className="text-[11px] font-mono text-[#586e75] bg-[#fdfaf3] border border-[#bfe3e0] rounded-full px-3 py-1">
+              {llmModelName || "local model"} · {llmScanSummary.completed_cases}/{llmScanSummary.total_cases}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5">
+            {[
+              [language === "zh" ? "触发总数" : "Triggered", llmScanSummary.triggered_count, "text-[#dc322f]"],
+              [language === "zh" ? "提示词注入" : "Prompt injection", llmScanSummary.by_vulnerability_type.prompt_injection || 0, "text-[#b58900]"],
+              [language === "zh" ? "系统提示泄露" : "System leakage", llmScanSummary.by_vulnerability_type.system_prompt_leakage || 0, "text-[#6c71c4]"],
+              [language === "zh" ? "安全对齐绕过" : "Alignment bypass", llmScanSummary.by_vulnerability_type.safety_alignment_bypass || 0, "text-[#cb4b16]"],
+              [language === "zh" ? "请求错误" : "Errors", llmScanSummary.error_count, "text-[#586e75]"],
+            ].map(([label, value, color]) => (
+              <button key={String(label)} onClick={() => onNavigateTab("vulnerabilities")} className="text-left rounded-xl bg-[#fdfaf3] border border-[#d7e7e2] px-3 py-3 hover:border-[#2aa198] transition-colors">
+                <div className="text-[10px] text-[#657b83] font-mono uppercase">{label}</div>
+                <div className={`text-2xl font-black font-mono mt-1 ${color}`}>{value}</div>
+              </button>
+            ))}
+          </div>
+          <p className="mt-3 text-[11px] text-[#586e75] leading-relaxed">
+            {language === "zh"
+              ? `风险等级：高危 ${llmScanSummary.by_severity.high || 0} / 中危 ${llmScanSummary.by_severity.medium || 0} / 低危 ${llmScanSummary.by_severity.low || 0}。实验室 triggered 表示合成 canary 行为被触发，正式卷宗状态仍由独立证据层判定。`
+              : `Severity: high ${llmScanSummary.by_severity.high || 0}, medium ${llmScanSummary.by_severity.medium || 0}, low ${llmScanSummary.by_severity.low || 0}. Lab-triggered behavior remains subject to independent evidence grading.`}
+          </p>
+        </section>
+      )}
 
       {/* Course Design Innovations Section */}
       <div className="p-6 rounded-2xl bg-[#fdfaf3] border border-[#dfd6bf] shadow-sm space-y-4">
@@ -524,7 +772,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
 
           <button
-            onClick={() => setShowCustomLauncher(!showCustomLauncher)}
+            onClick={() => {
+              if (showCustomLauncher) handleCustomCancel();
+              else {
+                setUploadMessage(null);
+                setShowCustomLauncher(true);
+              }
+            }}
             className="px-3 py-1.5 rounded-lg bg-[#eee8d5] hover:bg-[#e4dcbe] border border-[#dfd6bf] text-xs font-mono text-[#2b3638] flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
           >
             <Plus className="w-3.5 h-3.5 text-[#2aa198]" />
@@ -548,6 +802,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     type="text"
                     value={customPath}
                     onChange={(e) => setCustomPath(e.target.value)}
+                    disabled={isUploading}
                     placeholder="e.g. src/core/auth_handler.c"
                     className="min-w-0 flex-1 px-3 py-1.5 bg-[#fdfaf3] border border-[#dfd6bf] rounded-lg text-xs font-mono text-[#2b3638] placeholder:text-[#839496] focus:outline-none focus:border-[#2aa198]"
                     required
@@ -583,7 +838,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </label>
                 <select
                   value={customType}
-                  onChange={(e) => setCustomType(e.target.value as "source" | "binary")}
+                  onChange={(e) => {
+                    setCustomType(e.target.value as "source" | "binary");
+                    setCustomReverseAuthorized(false);
+                    setCustomUploadSha256(null);
+                    setCustomPath("");
+                    setUploadMessage(null);
+                    if (fileInputRef.current) fileInputRef.current.value = "";
+                  }}
+                  disabled={isUploading}
                   className="w-full px-3 py-1.5 bg-[#fdfaf3] border border-[#dfd6bf] rounded-lg text-xs font-mono text-[#2b3638] focus:outline-none cursor-pointer"
                 >
                   <option value="source">{language === "zh" ? "源代码文件 (C/Python/Go)" : "Source Code"}</option>
@@ -610,10 +873,33 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </div>
             )}
 
+            {customType === "binary" && (
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[#c8d7d2] bg-[#eef7f6] px-3 py-2.5">
+                <input
+                  type="checkbox"
+                  checked={customReverseAuthorized}
+                  onChange={(event) => setCustomReverseAuthorized(event.target.checked)}
+                  className="mt-0.5 h-4 w-4 accent-[#2aa198]"
+                />
+                <span>
+                  <span className="block text-xs font-bold text-[#2b3638]">
+                    {language === "zh"
+                      ? "我确认拥有该二进制样本的本地分析授权"
+                      : "I confirm local authorization for this binary"}
+                  </span>
+                  <span className="mt-0.5 block text-[10px] font-mono leading-relaxed text-[#586e75]">
+                    {language === "zh"
+                      ? "允许智能体对副本执行只读壳识别、UPX 去壳和离线反编译；不会启动样本。动态模糊仍需在“漏洞测试实验室”中另行显式启用。"
+                      : "Allows read-only packer detection, UPX unpacking and offline decompilation on a copy. The sample is not launched; dynamic fuzzing remains a separate opt-in in Test Lab."}
+                  </span>
+                </span>
+              </label>
+            )}
+
             <p className="text-[10px] font-mono text-[#657b83] leading-relaxed">
               {language === "zh"
-                ? "手动路径读取服务端工作目录中的授权目标；浏览按钮会把单个本地文件上传到隔离工件目录并自动分析。上传不会授权动态执行，ELF/PE 默认只做静态/逆向分析。"
-                : "Manual paths refer to authorized server-side targets. Browse uploads one local file to an isolated artifact directory and starts analysis. Upload does not authorize execution; ELF/PE remain read-only by default."}
+                ? "手动路径读取服务端工作目录中的授权目标；浏览按钮只会把单个本地文件上传并校验，不会自动开始审计。确认参数后再点击下方按钮；ELF/PE 默认只做静态/逆向分析。"
+                : "Manual paths refer to authorized server-side targets. Browse only uploads and validates one local file; it does not start an audit. Review the parameters before submitting; ELF/PE remain read-only by default."}
             </p>
             {uploadMessage && (
               <p role="status" className="text-[11px] font-mono text-[#2aa198] bg-[#eef7f6] border border-[#bfe3e0] rounded-lg px-3 py-2">
@@ -624,17 +910,24 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <div className="flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setShowCustomLauncher(false)}
+                onClick={handleCustomCancel}
                 className="px-3 py-1 rounded-lg text-xs font-mono text-[#586e75] hover:text-[#2b3638] cursor-pointer"
               >
                 {language === "zh" ? "取消" : "Cancel"}
               </button>
               <button
                 type="submit"
-                disabled={isUploading || isRunning}
+                disabled={
+                  isUploading ||
+                  isRunning ||
+                  !customPath.trim() ||
+                  (customType === "binary" && !customReverseAuthorized)
+                }
                 className="px-4 py-1.5 rounded-lg bg-[#2aa198] hover:bg-[#238b83] text-white font-semibold text-xs transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {language === "zh" ? "初始化并开始审计" : "Initialize & Scan Target"}
+                {isRunning
+                  ? (language === "zh" ? "正在初始化并审计…" : "Initializing and scanning…")
+                  : (language === "zh" ? "初始化并开始审计" : "Initialize & Scan Target")}
               </button>
             </div>
           </form>
@@ -755,7 +1048,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <span>
                     {language === "zh" ? "代码位置: " : "Location: "}
                     <strong className="text-[#2b3638]">
-                      {highlightedFinding.location.file_path || highlightedFinding.location.binary_address || "N/A"}
+                      {highlightedFinding.location.file_path || highlightedFinding.location.binary_address || highlightedFinding.location.module_name || "N/A"}
                       {highlightedFinding.location.line_start ? `:${highlightedFinding.location.line_start}` : ""}
                     </strong>
                   </span>

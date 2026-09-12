@@ -21,6 +21,7 @@ from typing import Any, Callable
 
 _MAX_LOG_CHARS = 16_384
 _DEFAULT_MAX_UNPACKED_BYTES = 64 * 1024 * 1024
+_MAX_R2_JSON_CHARS = 4 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -92,7 +93,18 @@ class _SafeToolAdapter:
             return None, ToolRunResult(self.tool_name, "unavailable", error=f"tool not found: {self.executable}"), None
         return input_path, None, resolved
 
-    def _run(self, command: list[str]) -> ToolRunResult:
+    def _run(
+        self,
+        command: list[str],
+        *,
+        capture_limit: int | None = None,
+    ) -> ToolRunResult:
+        """Run one tool command and bound captured text.
+
+        JSON-producing tools may need a larger temporary parsing window than
+        the public log window.  Callers can therefore request a bounded
+        ``capture_limit`` and trim the final public record after parsing.
+        """
         try:
             completed = self._runner(
                 command,
@@ -106,8 +118,9 @@ class _SafeToolAdapter:
             return ToolRunResult(self.tool_name, "timeout", executed=True, error=f"{self.tool_name} timed out", command=tuple(command))
         except OSError as exc:
             return ToolRunResult(self.tool_name, "error", error=f"cannot start {self.tool_name}: {exc}", command=tuple(command))
-        stdout, stdout_truncated = _clip_text(completed.stdout, self.max_log_chars)
-        stderr, stderr_truncated = _clip_text(completed.stderr, self.max_log_chars)
+        limit = capture_limit or self.max_log_chars
+        stdout, stdout_truncated = _clip_text(completed.stdout, limit)
+        stderr, stderr_truncated = _clip_text(completed.stderr, limit)
         if completed.returncode != 0:
             return ToolRunResult(
                 self.tool_name,
@@ -270,13 +283,16 @@ class Radare2Adapter(_SafeToolAdapter):
         if failure:
             return failure
         assert input_path is not None and resolved is not None
-        functions_run = self._run([resolved, "-q", "-c", "aa;aflj", str(input_path)])
+        functions_run = self._run(
+            [resolved, "-q", "-c", "aa;aflj", str(input_path)],
+            capture_limit=_MAX_R2_JSON_CHARS,
+        )
         if functions_run.status != "ok":
-            return _with_facts(functions_run, {"input": _file_fingerprint(input_path), "operation": "aflj"})
+            return _with_facts(_trim_run(functions_run, self.max_log_chars), {"input": _file_fingerprint(input_path), "operation": "aflj"})
         try:
             functions = parse_radare2_functions(functions_run.stdout, self.max_functions)
         except (TypeError, ValueError, json.JSONDecodeError) as exc:
-            return _with_facts(_replace_run(functions_run, status="invalid_output", error=f"invalid radare2 aflj JSON: {exc}"), {"input": _file_fingerprint(input_path), "operation": "aflj"})
+            return _with_facts(_trim_run(_replace_run(functions_run, status="invalid_output", error=f"invalid radare2 aflj JSON: {exc}"), self.max_log_chars), {"input": _file_fingerprint(input_path), "operation": "aflj"})
 
         # Managed or fully packed images may legitimately expose no native
         # functions to radare2. In that case agfj can emit an empty stream; a
@@ -292,15 +308,18 @@ class Radare2Adapter(_SafeToolAdapter):
             }
             if tool_versions:
                 facts["tool_version"] = self._run([resolved, "-v"]).as_dict()
-            return _with_facts(functions_run, facts)
+            return _with_facts(_trim_run(functions_run, self.max_log_chars), facts)
 
-        graphs_run = self._run([resolved, "-q", "-c", "aa;agfj", str(input_path)])
+        graphs_run = self._run(
+            [resolved, "-q", "-c", "aa;agfj", str(input_path)],
+            capture_limit=_MAX_R2_JSON_CHARS,
+        )
         if graphs_run.status != "ok":
-            return _with_facts(graphs_run, {"input": _file_fingerprint(input_path), "operation": "agfj", "functions": functions})
+            return _with_facts(_trim_run(graphs_run, self.max_log_chars), {"input": _file_fingerprint(input_path), "operation": "agfj", "functions": functions})
         try:
             cfg = parse_radare2_graphs(graphs_run.stdout, self.max_functions)
         except (TypeError, ValueError, json.JSONDecodeError) as exc:
-            return _with_facts(_replace_run(graphs_run, status="invalid_output", error=f"invalid radare2 agfj JSON: {exc}"), {"input": _file_fingerprint(input_path), "operation": "agfj", "functions": functions})
+            return _with_facts(_trim_run(_replace_run(graphs_run, status="invalid_output", error=f"invalid radare2 agfj JSON: {exc}"), self.max_log_chars), {"input": _file_fingerprint(input_path), "operation": "agfj", "functions": functions})
 
         pseudocode: dict[str, str] = {}
         failures: list[dict[str, Any]] = []
@@ -418,6 +437,19 @@ def _replace_run(run: ToolRunResult, **changes: Any) -> ToolRunResult:
     values = run.__dict__.copy()
     values.update(changes)
     return ToolRunResult(**values)
+
+
+def _trim_run(run: ToolRunResult, maximum: int) -> ToolRunResult:
+    """Shrink a temporary parse buffer back to the configured public log size."""
+
+    stdout, stdout_truncated = _clip_text(run.stdout, maximum)
+    stderr, stderr_truncated = _clip_text(run.stderr, maximum)
+    return _replace_run(
+        run,
+        stdout=stdout,
+        stderr=stderr,
+        truncated=run.truncated or stdout_truncated or stderr_truncated,
+    )
 
 
 def _clip_text(value: object, maximum: int) -> tuple[str, bool]:

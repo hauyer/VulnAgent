@@ -163,6 +163,131 @@ def _timeline_rows(rows: list[Any]) -> str:
     return "".join(body) or '<tr><td colspan="5" class="empty">无 Evidence 时间线。</td></tr>'
 
 
+def _binary_protection_panel(raw: Any) -> str:
+    chapter = _mapping(raw)
+    if not chapter:
+        return ""
+    protection = _mapping(chapter.get("protection"))
+    restoration = _mapping(chapter.get("restoration"))
+    validation = _mapping(restoration.get("validation"))
+    metrics = _mapping(restoration.get("metrics"))
+    deobfuscation = _mapping(chapter.get("deobfuscation"))
+    readability = _mapping(deobfuscation.get("readability"))
+    chain_rows = "".join(
+        "<tr><td>{stage}</td><td><code>{id}</code></td><td>{source}</td></tr>".format(
+            stage=_escape(_mapping(item).get("stage")),
+            id=_escape(_mapping(item).get("evidence_id")),
+            source=_escape(_mapping(item).get("source")),
+        )
+        for item in _list(chapter.get("evidence_chain"))
+    ) or '<tr><td colspan="3" class="empty">无专项 Evidence。</td></tr>'
+    detected = "、".join(map(str, _list(deobfuscation.get("detected_types")))) or "未检出"
+    return """
+<section class="panel protection-panel"><h2>{title}</h2>
+<div class="facts"><span><b>保护类型</b> {family}</span><span><b>强度</b> L{level}</span>
+<span><b>置信度</b> {confidence}</span><span><b>还原状态</b> {status}</span></div>
+<div class="two-col"><section><h4>结构修复与反编译校验</h4>
+<p>成功：{success}　可解析：{parseable}　导入符号：{imports}　耗时：{elapsed} ms</p>
+</section><section><h4>混淆还原与可读性</h4>
+<p>类型：{detected}</p><p>评分：{before} → {after}</p></section></div>
+<table><thead><tr><th>阶段</th><th>Evidence ID</th><th>来源</th></tr></thead><tbody>{chain}</tbody></table>
+</section>""".format(
+        title=_escape(chapter.get("title") or "二进制程序保护分析专项"),
+        family=_escape(protection.get("family") or "未归因"),
+        level=_escape(protection.get("level") or 0),
+        confidence=_escape(protection.get("confidence")),
+        status=_escape(restoration.get("status") or "not_run"),
+        success=_escape(bool(restoration.get("success"))),
+        parseable=_escape(bool(validation.get("parseable"))),
+        imports=_escape(validation.get("imports") or 0),
+        elapsed=_escape(metrics.get("elapsed_ms") or 0),
+        detected=_escape(detected),
+        before=_escape(readability.get("before") or 0),
+        after=_escape(readability.get("after") or 0),
+        chain=chain_rows,
+    )
+
+
+def _software_code_panel(raw: Any) -> str:
+    chapter = _mapping(raw)
+    if not chapter:
+        return ""
+    dossiers = _list(chapter.get("dossiers"))
+    cards: list[str] = []
+    for raw_dossier in dossiers:
+        dossier = _mapping(raw_dossier)
+        location = _mapping(dossier.get("source_location"))
+        assessment = _mapping(dossier.get("agent_assessment"))
+        remediation = _mapping(dossier.get("remediation"))
+        dynamic = _mapping(dossier.get("dynamic_validation"))
+        chain = _list(dossier.get("evidence_chain"))
+        location_text = " · ".join(
+            part
+            for part in (
+                str(_display_path(location.get("file_path")) or ""),
+                str(location.get("function_name") or ""),
+                f"line {location['line_start']}" if location.get("line_start") else "",
+            )
+            if part
+        )
+        chain_rows = "".join(
+            "<tr><td>{stage}</td><td><code>{evidence_id}</code></td><td>{source}</td></tr>".format(
+                stage=_escape(_mapping(item).get("stage")),
+                evidence_id=_escape(_mapping(item).get("evidence_id")),
+                source=_escape(_mapping(item).get("source")),
+            )
+            for item in chain
+        ) or '<tr><td colspan="3" class="empty">暂无关联证据。</td></tr>'
+        dynamic_text = (
+            "用例 {cases}，异常 {anomalies}，环境重置 {reset}".format(
+                cases=_escape(dynamic.get("case_count", 0)),
+                anomalies=_escape(dynamic.get("anomaly_count", 0)),
+                reset=_escape(dynamic.get("reset_completed", False)),
+            )
+            if dynamic
+            else "未执行受控动态验证"
+        )
+        cards.append(
+            """
+<article class="finding"><div class="finding-head"><div><h3>{title}</h3></div>
+<div class="badges"><span class="severity severity-{severity_class}">{severity}</span><span class="status status-{status_class}">{status}</span></div></div>
+<div class="facts"><span><b>类型</b> {kind}</span><span><b>CWE</b> {cwe}</span><span><b>源码定位</b> {location}</span></div>
+<div class="two-col"><section><h4>智能体研判</h4><p>{assessment}</p><p class="muted">该结论仅为辅助证据，最终状态以独立复核为准。</p></section>
+<section><h4>受控验证与修复</h4><p>{dynamic}</p><p>{remediation}</p></section></div>
+<details><summary>证据链（{chain_count}）</summary><table><thead><tr><th>阶段</th><th>Evidence ID</th><th>来源</th></tr></thead><tbody>{chain}</tbody></table></details>
+</article>""".format(
+                title=_escape(dossier.get("title")),
+                severity_class=_escape(str(dossier.get("risk_level") or "unknown").casefold()),
+                severity=_escape(dossier.get("risk_level")),
+                status_class=_escape(str(dossier.get("status") or "candidate").casefold()),
+                status=_escape(dossier.get("status")),
+                kind=_escape(dossier.get("vulnerability_type")),
+                cwe=_escape(dossier.get("cwe_id")),
+                location=_escape(location_text),
+                assessment=_escape(assessment.get("summary") or "尚无智能体研判"),
+                dynamic=dynamic_text,
+                remediation=_escape(
+                    assessment.get("remediation_summary")
+                    or remediation.get("agent_summary")
+                    or remediation.get("priority_label")
+                ),
+                chain_count=len(chain),
+                chain=chain_rows,
+            )
+        )
+    return """
+<section class="panel"><h2>{title}</h2><p>{notice}</p>
+<div class="facts"><span><b>代码风险数</b> {count}</span><span><b>高风险</b> {high}</span><span><b>中风险</b> {medium}</span></div></section>
+{cards}""".format(
+        title=_escape(chapter.get("title") or "大模型服务代码安全审计"),
+        notice=_escape(chapter.get("compliance_notice")),
+        count=_escape(chapter.get("finding_count", 0)),
+        high=_escape(_mapping(chapter.get("risk_level_distribution")).get("HIGH", 0)),
+        medium=_escape(_mapping(chapter.get("risk_level_distribution")).get("MEDIUM", 0)),
+        cards="".join(cards),
+    )
+
+
 def render_report_html(
     report: Mapping[str, Any],
     *,
@@ -183,6 +308,7 @@ def render_report_html(
         if report.get("mock")
         else ""
     )
+    compliance_notice = report.get("compliance_notice") or "仅用于安全审计与防御研究，仅限教学实验使用"
     limitations_html = "".join(
         (
             '<li>缺失 Evidence ID：{}</li>'.format(
@@ -216,11 +342,14 @@ table{{width:100%;border-collapse:collapse;margin-top:10px;font-size:12px}}th,td
 @media print{{body{{background:#fff}}.wrap{{max-width:none;padding:0}}header,.metric,.panel,.finding{{box-shadow:none;break-inside:avoid}}details{{display:block}}}}
 </style></head><body><main class="wrap">
 <header><h1>{title}</h1><div class="subtitle">Task {task_id} · Target {target_id} · {target_type} · 状态 {task_status}</div></header>
+<div class="notice">{compliance_notice}</div>
 {mock_notice}
 <section class="grid">
 <div class="metric"><b>{finding_count}</b><span>Findings</span></div><div class="metric"><b>{evidence_count}</b><span>Evidence</span></div><div class="metric"><b>{confirmed}</b><span>Confirmed</span></div><div class="metric"><b>{rejected}</b><span>Rejected</span></div><div class="metric"><b>{overall}</b><span>最高风险</span></div>
 </section>
 <section class="panel"><h2>任务与风险摘要</h2><p>{headline}</p><p><b>目标路径：</b><code>{target_path}</code></p><p><b>创建时间：</b>{created_at}</p></section>
+{binary_protection_panel}
+{software_code_panel}
 <h2>漏洞发现与独立复核</h2>{finding_cards}
 <section class="panel"><h2>Evidence 时间线</h2><table><thead><tr><th>时间</th><th>Evidence ID</th><th>类型</th><th>来源</th><th>说明</th></tr></thead><tbody>{timeline}</tbody></table></section>
 <section class="panel"><h2>限制与完整性检查</h2><ul>{limitations}</ul></section>
@@ -231,6 +360,7 @@ table{{width:100%;border-collapse:collapse;margin-top:10px;font-size:12px}}th,td
         target_type=_escape(target.get("target_type")),
         task_status=_escape(task.get("status")),
         mock_notice=mock_notice,
+        compliance_notice=_escape(compliance_notice),
         finding_count=_escape(summary.get("finding_count", 0)),
         evidence_count=_escape(summary.get("evidence_count", 0)),
         confirmed=_escape(counts.get("confirmed", 0)),
@@ -239,6 +369,8 @@ table{{width:100%;border-collapse:collapse;margin-top:10px;font-size:12px}}th,td
         headline=_escape(risk.get("headline")),
         target_path=_escape(_display_path(target.get("path"))),
         created_at=_escape(task.get("created_at")),
+        binary_protection_panel=_binary_protection_panel(report.get("binary_protection_analysis")),
+        software_code_panel=_software_code_panel(report.get("software_code_security")),
         finding_cards=_finding_cards(_list(report.get("findings"))),
         timeline=_timeline_rows(_list(report.get("evidence_timeline"))),
         limitations=limitations_html,

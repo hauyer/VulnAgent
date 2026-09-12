@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from vulnagent.analyzers.binary.common import inspect_packing_signals
+from vulnagent.analyzers.binary.protection import classify_protection
 from vulnagent.contracts import (
     BinaryAnalysisRequest,
     BinaryAnalysisResult,
@@ -17,6 +18,7 @@ from vulnagent.contracts import (
 
 from ._elf import parse_elf
 from ._callsite import inspect_pe_x64_callsites
+from ._dex import dex_strings, is_apk, is_dex, parse_dex_or_apk
 from ._pe import parse_pe
 from ._reader import ParseLimits, entropy
 
@@ -24,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 class StaticBinaryReverseAnalyzer:
-    """Extract bounded PE/ELF facts without executing targets or invoking tools."""
+    """Extract bounded PE/ELF/DEX/APK facts without executing targets or invoking tools."""
 
     def __init__(self, limits: ParseLimits | None = None) -> None:
         self.limits = limits or ParseLimits()
@@ -53,11 +55,19 @@ class StaticBinaryReverseAnalyzer:
             parsed = parse_pe(data, self.limits)
         elif data.startswith(b"\x7fELF"):
             parsed = parse_elf(data, self.limits)
+        elif is_dex(data) or is_apk(data):
+            parsed = parse_dex_or_apk(data, self.limits)
         else:
             raise ModuleExecutionError(
-                "Unsupported binary format; expected PE or ELF magic"
+                "Unsupported binary format; expected PE, ELF, DEX or APK magic"
             )
         strings, string_locations, truncated = self._strings(data)
+        if is_dex(data):
+            strings = list(dict.fromkeys([*dex_strings(data, self.limits), *strings]))
+        elif parsed.file_format == "APK":
+            dex_values = parsed.details.get("dex_strings", [])
+            if isinstance(dex_values, list):
+                strings = list(dict.fromkeys([*(str(item) for item in dex_values), *strings]))
         if truncated:
             parsed.warnings.append("String output was truncated by ParseLimits")
         metadata: dict[str, Any] = {
@@ -77,11 +87,15 @@ class StaticBinaryReverseAnalyzer:
             "strings_truncated": truncated,
             "warnings": parsed.warnings,
             "format_details": parsed.details,
-            "callsite_semantics": inspect_pe_x64_callsites(data, parsed),
+            "callsite_semantics": (
+                inspect_pe_x64_callsites(data, parsed)
+                if parsed.file_format == "PE"
+                else {"available": False, "reason": "not_pe_x64"}
+            ),
             "capabilities": {
                 "headers": True,
                 "sections": True,
-                "imports_exports": "PE normal directories / ELF section-backed symbols",
+                "imports_exports": "PE normal directories / ELF section-backed symbols / DEX table inventory",
                 "function_discovery": "ELF declared symbols only",
                 "callsite_semantics": (
                     "optional bounded PE x64 decoding; no CFG or reachability proof"
@@ -110,6 +124,7 @@ class StaticBinaryReverseAnalyzer:
             metadata=metadata,
         )
         result.metadata["packing_signals"] = inspect_packing_signals(result)
+        result.metadata["protection_analysis"] = classify_protection(result)
         return result
 
     def _strings(self, data: bytes) -> tuple[list[str], list[dict[str, Any]], bool]:

@@ -12,6 +12,9 @@ import {
   Play,
   ArrowRight,
   Database,
+  ClipboardCheck,
+  FlaskConical,
+  Code2,
 } from "lucide-react";
 import { ActiveTab, Task } from "../types.js";
 
@@ -53,12 +56,15 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   if (!isOpen) return null;
 
   const NAVIGATION_ITEMS: { id: ActiveTab; label: string; icon: any; category: string }[] = [
+    { id: "testlab", label: "Local Security Test Lab", icon: FlaskConical, category: "Views" },
+    { id: "acceptance", label: "Course Acceptance Matrix", icon: ClipboardCheck, category: "Views" },
     { id: "dashboard", label: "Mission Control Dashboard", icon: Sparkles, category: "Views" },
     { id: "topology", label: "Multi-Agent DAG Topology Graph", icon: Layers, category: "Views" },
+    { id: "trace", label: "Live Domain Event Stream & Telemetry", icon: Activity, category: "Views" },
     { id: "evidence", label: "Evidence Chain Matrix & Code Inspector", icon: Database, category: "Views" },
     { id: "vulnerabilities", label: "Vulnerability Dossier & Verification", icon: Shield, category: "Views" },
+    { id: "poc", label: "Controlled PoC Evidence Replay", icon: Code2, category: "Views" },
     { id: "report", label: "Executive Security Audit Report", icon: FileText, category: "Views" },
-    { id: "trace", label: "Live Domain Event Stream & Telemetry", icon: Activity, category: "Views" },
     { id: "api", label: "REST API Explorer & CLI Console", icon: Terminal, category: "Developer" },
   ];
 

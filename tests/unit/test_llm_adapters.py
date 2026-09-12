@@ -27,7 +27,7 @@ from vulnagent.settings import Settings
     [
         (DeepSeekAdapter, "https://api.deepseek.test", "deepseek-v4-flash", "max_tokens"),
         (GLMAdapter, "https://glm.test/api/paas/v4", "glm-5.2", "max_tokens"),
-        (KimiAdapter, "https://api.moonshot.test/v1", "kimi-k2.6", "max_completion_tokens"),
+        (KimiAdapter, "https://api.moonshot.test/v1", "kimi-k3", "max_completion_tokens"),
     ],
 )
 async def test_provider_adapter_uses_bearer_chat_completion_contract(
@@ -43,11 +43,15 @@ async def test_provider_adapter_uses_bearer_chat_completion_contract(
         assert payload["model"] == model
         assert payload["messages"][-1] == {"role": "user", "content": "hello"}
         assert payload["stream"] is False
-        assert payload["thinking"] == {"type": "disabled"}
         assert payload[token_field] == 512
-        assert payload["temperature"] == (
-            0.6 if adapter_type is KimiAdapter else 0.0
-        )
+        if adapter_type is KimiAdapter:
+            # Kimi K3 fixes temperature/top_p server-side and replaces the
+            # thinking switch with reasoning_effort, so both are omitted.
+            assert "temperature" not in payload
+            assert "thinking" not in payload
+        else:
+            assert payload["temperature"] == 0.0
+            assert payload["thinking"] == {"type": "disabled"}
         return httpx.Response(
             200,
             json={"choices": [{"message": {"content": "safe answer"}}]},
@@ -112,7 +116,7 @@ async def test_kimi_retries_rate_limit_without_reading_error_body(
     adapter = KimiAdapter(
         api_key="test-secret",
         base_url="https://api.moonshot.test/v1",
-        model="kimi-k2.6",
+        model="kimi-k3",
         transport=httpx.MockTransport(handler),
     )
     adapter.min_request_interval_seconds = 0.0

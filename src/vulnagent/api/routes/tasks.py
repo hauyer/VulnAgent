@@ -23,6 +23,16 @@ class CreateTaskRequest(BaseModel):
 async def create_task(payload: CreateTaskRequest, request: Request) -> Task:
     if not payload.target_path.strip():
         raise HTTPException(status_code=400, detail="target_path must not be empty")
+    if payload.metadata.get("audit_domain") == "software_code":
+        normalized_path = payload.target_path.strip().replace("\\", "/")
+        if payload.target_type not in {TargetType.SOURCE, TargetType.PROJECT}:
+            raise HTTPException(status_code=400, detail="software-code audit requires a source/project target")
+        if payload.metadata.get("local_authorized") is not True:
+            raise HTTPException(status_code=403, detail="software-code audit requires explicit local authorization")
+        if "://" in normalized_path or normalized_path.startswith("//"):
+            raise HTTPException(status_code=400, detail="remote and network paths are forbidden for software-code audit")
+        if payload.metadata.get("defensive_only") is not True:
+            raise HTTPException(status_code=400, detail="software-code audit must declare defensive_only=true")
     target = Target(
         target_id=new_target_id(),
         path=payload.target_path,

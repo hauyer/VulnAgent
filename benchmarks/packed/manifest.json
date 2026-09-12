@@ -7,7 +7,7 @@
   "samples": [
     {
       "sample_id": "packed-aj21h-spaghetti-20260501",
-      "acquisition_status": "materialized",
+      "acquisition_status": "pending_user_supplied",
       "qualification": "strict_closed_source",
       "software": {
         "name": "aj21h's Spaghetti",
@@ -49,7 +49,7 @@
     },
     {
       "sample_id": "packed-kowfsun-custom-20260225",
-      "acquisition_status": "materialized",
+      "acquisition_status": "pending_user_supplied",
       "qualification": "strict_closed_source",
       "software": {
         "name": "Kowfsun's Custom packed crackme",

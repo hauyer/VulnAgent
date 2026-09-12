@@ -42,6 +42,12 @@ Binary 运行器会产生 14 个 Symbol-Rich 与 14 个 Stripped 分析行；两
 
 ELF runner 已用 Zig 0.16.0 的 `x86_64-linux-gnu` 交叉编译链完成 6 个样本、3 个配对家族、Symbol-Rich/Stripped/PIE 三 Profile 共 18 行真实实验。它验证 compiler target、ELF magic、分析器报告的 `file_format`，并记录 compiler version/machine、ELF type、架构和 SHA-256；所有目标只编译和读取，不执行。三个 Profile 均为 3 TP、0 FP、3 TN、0 FN，但每组只有 3 个正样本，Wilson 95% 下界约 0.438。
 
+前端“本地安全测试实验室”提供独立 ELF-A 看板：总览直接展示 Fixture/Profile/Row 数量、编译器版本与目标执行边界，并逐 Profile 展示 TP/FP/TN/FN、Precision/Recall/F1 和 Evidence Chain Coverage。看板只读取 `artifacts/experiments/elf-benchmark/metrics.json` 与 `run_manifest.json`，产物缺失时明确显示未生成，不硬编码完成状态。
+
+“验收矩阵”总览直接展示 LLM 对比的 P/R/F1、Token、分币种 Cost 和 Evidence Coverage；Provider 返回的 usage 或费率不存在时显示为不可用，不按零值处理。任务“审计报告”页通过只读导出接口提供自包含 HTML 与可打印 PDF，和 Markdown/JSON 操作位于同一入口。
+
+由于 `artifacts/experiments/` 是运行时忽略目录，前端优先读取当前 `llm-comparison` 规范产物，缺失时只读回退到 `benchmarks/baselines/llm-comparison-v04.json` 中已发布的凭据安全聚合快照。界面会标明“已发布真实基线”及 manifest 匹配状态；该快照只用于展示，不参与当前 A 组验收状态计算。
+
 ## 真实多模型对比
 
 DeepSeek、智谱 GLM 与 Kimi K2.6 的 HTTP Adapter、Planner 受约束 JSON 建议和多 Provider 对比脚本均已实现，并通过 `httpx.MockTransport` 契约测试。2026-09-11 三家均已完成当前 20 样本真实实验，共 60 次正式请求，全部返回 HTTP 200 和 usage；运行产物位于 `artifacts/experiments/llm-comparison/`，且不记录密钥或原始响应。Kimi Adapter 处理了 K2.6 固定温度约束，并通过 21 秒最小请求间隔与有界 429 退避遵守低 RPM 限制。

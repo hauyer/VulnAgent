@@ -61,7 +61,7 @@ def _write_manifest(path: Path, kind: str, samples: list[dict[str, object]]) -> 
     )
 
 
-def test_repository_manifests_contain_two_authorized_materials_each() -> None:
+def test_repository_manifests_contain_two_authorized_external_targets_each() -> None:
     manifests = [
         load_manifest(ROOT / "benchmarks/packed/manifest.json"),
         load_manifest(ROOT / "benchmarks/obfuscated/manifest.json"),
@@ -73,13 +73,13 @@ def test_repository_manifests_contain_two_authorized_materials_each() -> None:
     ]
     assert all(len(item["samples"]) == 2 for item in manifests)
     samples = [sample for manifest in manifests for sample in manifest["samples"]]
-    assert all(sample["acquisition_status"] == "materialized" for sample in samples)
+    assert all(sample["acquisition_status"] == "pending_user_supplied" for sample in samples)
     assert all(sample["software"]["closed_source"] is True for sample in samples)
     assert all(sample["authorization"]["static_analysis"] is True for sample in samples)
     assert all(sample["authorization"]["dynamic_execution"] is False for sample in samples)
 
 
-def test_repository_manifests_pass_strict_read_only_intake() -> None:
+def test_distributable_checkout_reports_missing_protected_materials_honestly() -> None:
     result = audit_manifests(
         [
             ROOT / "benchmarks/packed/manifest.json",
@@ -87,10 +87,10 @@ def test_repository_manifests_pass_strict_read_only_intake() -> None:
         ]
     )
 
-    assert result["strict_requirement_met"] is True
-    assert result["ready_distinct_software"] == {"obfuscation": 2, "packing": 2}
+    assert result["strict_requirement_met"] is False
+    assert result["ready_distinct_software"] == {"obfuscation": 0, "packing": 0}
     assert all(row["target_executed"] is False for row in result["samples"])
-    assert all(row["status"] == "intake_ready" for row in result["samples"])
+    assert all(row["status"] == "pending_user_supplied" for row in result["samples"])
 
 
 def test_two_distinct_materialized_samples_per_kind_pass_intake(tmp_path: Path) -> None:

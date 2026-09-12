@@ -78,5 +78,103 @@ DYNAMIC_CODE_EXECUTION = AuditRule(
     dynamic_confidence=0.68,
 )
 
+NATIVE_DANGEROUS_COPY = AuditRule(
+    rule_id="VA-NATIVE-MEM-001",
+    category="memory",
+    title="Potential native buffer overflow",
+    vulnerability_type="buffer_overflow",
+    cwe_id="CWE-120",
+    severity="HIGH",
+    tainted_confidence=0.86,
+    dynamic_confidence=0.68,
+)
 
-__all__ = ["AuditRule"]
+NATIVE_INTEGER_OVERFLOW = AuditRule(
+    rule_id="VA-NATIVE-INT-001",
+    category="integer",
+    title="Potential integer overflow in size calculation",
+    vulnerability_type="integer_overflow",
+    cwe_id="CWE-190",
+    severity="HIGH",
+    tainted_confidence=0.82,
+    dynamic_confidence=0.62,
+)
+
+NATIVE_ARRAY_BOUNDS = AuditRule(
+    rule_id="VA-NATIVE-BOUNDS-001",
+    category="bounds",
+    title="Potential array index out of bounds",
+    vulnerability_type="array_out_of_bounds",
+    cwe_id="CWE-129",
+    severity="HIGH",
+    tainted_confidence=0.82,
+    dynamic_confidence=0.60,
+)
+
+NATIVE_INPUT_VALIDATION = AuditRule(
+    rule_id="VA-NATIVE-INPUT-001",
+    category="input_validation",
+    title="Potential missing input validation",
+    vulnerability_type="input_validation_missing",
+    cwe_id="CWE-20",
+    severity="MEDIUM",
+    tainted_confidence=0.74,
+    dynamic_confidence=0.54,
+)
+
+NATIVE_NULL_DEREFERENCE = AuditRule(
+    rule_id="VA-NATIVE-NULL-001",
+    category="null_safety",
+    title="Potential null pointer dereference",
+    vulnerability_type="null_pointer_dereference",
+    cwe_id="CWE-476",
+    severity="MEDIUM",
+    tainted_confidence=0.72,
+    dynamic_confidence=0.52,
+)
+
+NATIVE_RESOURCE_LEAK = AuditRule(
+    rule_id="VA-NATIVE-RESOURCE-001",
+    category="resource_lifecycle",
+    title="Potential resource leak",
+    vulnerability_type="resource_leak",
+    cwe_id="CWE-772",
+    severity="MEDIUM",
+    tainted_confidence=0.68,
+    dynamic_confidence=0.58,
+)
+
+NATIVE_INTERFACE_ACCESS = AuditRule(
+    rule_id="VA-NATIVE-ACCESS-001",
+    category="access_control",
+    title="Potential local interface access-control omission",
+    vulnerability_type="interface_access_control_missing",
+    cwe_id="CWE-862",
+    severity="HIGH",
+    tainted_confidence=0.70,
+    dynamic_confidence=0.55,
+)
+
+NATIVE_CONFIG_AUTHORIZATION = AuditRule(
+    rule_id="VA-NATIVE-CONFIG-001",
+    category="configuration_authorization",
+    title="Potential configuration authorization omission",
+    vulnerability_type="configuration_authorization_missing",
+    cwe_id="CWE-863",
+    severity="HIGH",
+    tainted_confidence=0.72,
+    dynamic_confidence=0.56,
+)
+
+
+__all__ = [
+    "AuditRule",
+    "NATIVE_ARRAY_BOUNDS",
+    "NATIVE_DANGEROUS_COPY",
+    "NATIVE_INPUT_VALIDATION",
+    "NATIVE_INTEGER_OVERFLOW",
+    "NATIVE_NULL_DEREFERENCE",
+    "NATIVE_RESOURCE_LEAK",
+    "NATIVE_INTERFACE_ACCESS",
+    "NATIVE_CONFIG_AUTHORIZATION",
+]
