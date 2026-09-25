@@ -65,11 +65,36 @@ class ExplorationLogEntry(BaseModel):
 
 
 class DossierReceipt(BaseModel):
-    """A maintainer/platform receipt; only summaries survive redaction."""
+    """A maintainer/platform receipt; only summaries survive redaction.
 
-    kind: str  # email | ticket | platform | none
-    reference: str = ""  # sanitized reference, no credentials
+    ``kind=none`` is never a valid receipt for advancing the state machine.
+    """
+
+    kind: str  # email | ticket | platform | phone | none
+    reference: str = ""  # sanitized reference (ticket id / receipt no.), no credentials
     note: str = ""
+
+
+# Valid receipt kinds for each real-state transition target. A ``kind=none``
+# receipt or a missing reference where required does not advance the machine.
+_RECEIPT_KINDS: dict[DossierState, set[str]] = {
+    DossierState.MAINTAINER_CONTACTED: {"email", "ticket", "platform", "phone"},
+    DossierState.SUBMITTED: {"ticket", "platform"},
+    DossierState.ACKNOWLEDGED: {"email", "ticket", "platform"},
+    DossierState.FIXED: {"email", "ticket", "platform"},
+    DossierState.PUBLISHED_ACCEPTED: {"platform"},
+}
+_REFERENCE_REQUIRED = {DossierState.SUBMITTED, DossierState.PUBLISHED_ACCEPTED}
+
+
+def _valid_receipt_for(receipt: DossierReceipt, target: DossierState) -> bool:
+    if receipt.kind == "none":
+        return False
+    if receipt.kind not in _RECEIPT_KINDS.get(target, set()):
+        return False
+    if target in _REFERENCE_REQUIRED and not receipt.reference.strip():
+        return False
+    return True
 
 
 class ExploratorySession(BaseModel):
@@ -89,7 +114,13 @@ class ExploratorySession(BaseModel):
     state: DossierState = DossierState.DRAFT
     practice_mode: bool = Field(
         default=True,
-        description="true when this is a course rehearsal; dossier is marked not-submitted",
+        description="true when this is a course rehearsal; the real state stays "
+        "draft and any demonstrated flow is recorded in simulated_state only",
+    )
+    simulated_state: DossierState | None = Field(
+        default=None,
+        description="practice-mode demonstration state, always clearly labeled "
+        "SIMULATED; never a real contact or submission",
     )
     entries: list[ExplorationLogEntry] = Field(default_factory=list)
     receipts: list[DossierReceipt] = Field(default_factory=list)
@@ -102,6 +133,7 @@ class RedactedDossier(BaseModel):
     target_id: str  # sanitized name only
     state: DossierState
     practice_mode: bool
+    simulated_state: DossierState | None = None
     summary: str
     observation_count: int
     candidate_count: int
@@ -114,21 +146,42 @@ class RedactedDossier(BaseModel):
     )
 
 
-def transition(session: ExploratorySession, target: DossierState) -> bool:
-    """Advance the state machine; human receipt is recorded beforehand.
+def _last_valid_receipt(session: ExploratorySession) -> DossierReceipt | None:
+    """Most recent receipt recorded by a human that is not kind=none."""
+    for receipt in reversed(session.receipts):
+        if receipt.kind != "none":
+            return receipt
+    return None
 
-    In practice mode nothing may advance past ``submitted`` (and the session
-    is never auto-submitted -- the caller records the receipt explicitly).
+
+def transition(
+    session: ExploratorySession,
+    target: DossierState,
+    *,
+    receipt: DossierReceipt | None = None,
+) -> bool:
+    """Advance the disclosure state machine under strict honesty rules.
+
+    - Real mode (``practice_mode=False``): every advance requires an explicit
+      valid human receipt (``kind != none`` and, for submitted / published,
+      a non-empty reference). Without it the transition is refused.
+    - Practice mode (``practice_mode=True``): the real ``state`` never moves
+      from ``draft``; a demonstration advance is recorded only in
+      ``simulated_state`` and must be labeled SIMULATED everywhere.
+    - ``kind=none`` is never a valid receipt.
     """
-    if target == session.state:
-        return False
+    if session.practice_mode:
+        # Demonstration flow: advance along the simulated chain only.
+        current = session.simulated_state or DossierState.DRAFT
+        if target not in _TRANSITIONS[current]:
+            return False
+        session.simulated_state = target
+        return True
+
+    # Real mode: edge + an explicit, target-matching human receipt.
     if target not in _TRANSITIONS[session.state]:
         return False
-    if session.practice_mode and target in {
-        DossierState.ACKNOWLEDGED,
-        DossierState.FIXED,
-        DossierState.PUBLISHED_ACCEPTED,
-    }:
+    if receipt is None or not _valid_receipt_for(receipt, target):
         return False
     session.state = target
     return True
@@ -158,11 +211,23 @@ def redact(session: ExploratorySession) -> RedactedDossier:
         {"stage": entry.stage.value, "time": entry.timestamp, "kind": entry.kind}
         for entry in session.entries[-10:]
     ]
+    simulated = session.simulated_state if session.practice_mode else None
+    disclosure_note = (
+        "SIMULATED disclosure rehearsal: the state machine was demonstrated "
+        "only. Nothing has been submitted to any maintainer or vulnerability "
+        "platform; real state remains draft."
+        if simulated is not None and session.state is DossierState.DRAFT
+        else (
+            "This dossier is a course rehearsal. Nothing has been submitted to "
+            "any maintainer or vulnerability platform."
+        )
+    )
     return RedactedDossier(
         session_id=session.session_id,
         target_id=session.target_id,
         state=session.state,
         practice_mode=session.practice_mode,
+        simulated_state=simulated,
         summary=(
             f"Exploratory study of authorized unknown target {session.target_id}; "
             f"{len(candidates)} candidate(s), {len(negatives)} negative "
@@ -173,6 +238,7 @@ def redact(session: ExploratorySession) -> RedactedDossier:
         negative_count=len(negatives),
         candidate_refs=[_safe_ref(e.candidate_ref) for e in candidates],
         timeline=timeline,
+        disclosure_note=disclosure_note,
     )
 
 

@@ -434,12 +434,12 @@ async def main() -> None:
         ],
     )
 
-    redacted = redact(session)
-    _write_yaml(out / "dossier_redacted.yaml", redacted.model_dump(mode="json"))
-
     # Human receipt drives the only allowed practice-mode transition.
     advanced = transition(session, DossierState.MAINTAINER_CONTACTED)
     if advanced:
+        # Practice mode: real state stays draft; demonstrated flow recorded in
+        # simulated_state only and labeled SIMULATED (kind=none is not a
+        # receipt and never advances the real machine).
         session.receipts.append(
             DossierReceipt(
                 kind="none",
@@ -449,14 +449,24 @@ async def main() -> None:
         )
         store.save(session)
 
+    redacted = redact(session)
+    _write_yaml(out / "dossier_redacted.yaml", redacted.model_dump(mode="json"))
+
     summary = {
         "session_id": session.session_id,
         "practice_mode": session.practice_mode,
         "state": session.state.value,
+        "simulated_state": (
+            session.simulated_state.value if session.simulated_state else None
+        ),
         "disclosure_note": redacted.disclosure_note,
         "observations": len(session.entries),
         "candidates": len(all_candidates),
         "negatives": sum(1 for r in all_candidates if r.get("negative")),
+        "honesty": {
+            "disclosure": "SIMULATED state machine rehearsal only; real state "
+                          "is draft, nothing submitted",
+        },
         "artifacts": {
             "session": str(store._path(session.session_id)),
             "candidates": str(out / "candidates.jsonl"),

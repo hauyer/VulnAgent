@@ -62,7 +62,25 @@ sanitizer 崩溃实证。
 把"0day 挖掘"所需的**能力链路**在授权目标上完整跑通并留下可复现证据，
 这是课程设计可验证、可解释的合理成果边界。
 
-## 5. 后续可选方向（不在本轮范围）
+## 5. 披露状态机修正（P0-A，2026-09-25）
+
+指导书指出旧演练档案存在诚信冲突：`state=maintainer_contacted` 与"未联系维护者"
+的 `disclosure_note` 并存，且 `transition()` 只校验状态边、不校验回执。已修复：
+
+1. `review/dossier.py`：`transition()` 在真实模式（`practice_mode=false`）下
+   **必须提供与目标状态匹配的有效人工回执**（`kind != none`；`submitted` /
+   `published` 还要求非空 reference）；`kind=none` 永不推进。
+2. `practice_mode=true` 时真实 `state` **恒为 draft**，教学演示只写入
+   `simulated_state`，脱敏稿与 API 统一显著标注 "SIMULATED"。
+3. API `advance_state` 服务层校验回执；演练 runner 顺序修正（先推进后 redact）。
+4. 旧档案迁移：`scripts/migrate_dossier_states.py` 对 wp6-exploration /
+   wp8-unknown-demo / wp8-zero-day 的 3 份旧档案**保留原始文件**，另生成
+   `_corrected.json`（state→draft、simulated_state=原状态）与 `_correction.json`
+   说明，summary.json 同步标注。
+5. 测试：状态机/API/集成测试更新并新增回执强制用例（`kind=none` 拒绝、
+   `submitted` 需 reference、practice 真实态恒 draft、脱敏 SIMULATED 标注）。
+
+## 6. 后续可选方向（不在本轮范围）
 
 - P2：将 ExploitGym 官方任务接入 Linux/Docker 执行（需要 Docker daemon + uv）
 - P3：接入真实 fuzz 语料库（如 Google fuzzbench 的 target 生成）

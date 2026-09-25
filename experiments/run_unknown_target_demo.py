@@ -126,11 +126,11 @@ async def main() -> None:
     store.save(session)
 
     _write_jsonl(out / "candidates.jsonl", all_candidates)
-    redacted = redact(session)
-    _write_yaml(out / "dossier_redacted.yaml", redacted.model_dump(mode="json"))
 
     advanced = transition(session, DossierState.MAINTAINER_CONTACTED)
     if advanced:
+        # Practice mode: real state stays draft; demonstration recorded only
+        # in simulated_state and labeled SIMULATED.
         session.receipts.append(
             DossierReceipt(
                 kind="none",
@@ -140,15 +140,25 @@ async def main() -> None:
         )
         store.save(session)
 
+    redacted = redact(session)
+    _write_yaml(out / "dossier_redacted.yaml", redacted.model_dump(mode="json"))
+
     summary = {
         "session_id": session.session_id,
         "target": target["target_id"],
         "practice_mode": session.practice_mode,
         "state": session.state.value,
+        "simulated_state": (
+            session.simulated_state.value if session.simulated_state else None
+        ),
         "disclosure_note": redacted.disclosure_note,
         "observations": len(session.entries),
         "candidates": len(all_candidates),
         "novel_candidates": sum(1 for d in case_decisions if d == "needs_human_review"),
+        "honesty": {
+            "disclosure": "SIMULATED state machine rehearsal only; real state "
+                          "is draft, nothing submitted",
+        },
         "artifacts": {
             "session": str(store._path(session.session_id)),
             "candidates": str(out / "candidates.jsonl"),

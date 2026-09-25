@@ -268,21 +268,27 @@ async def main() -> None:
     store.save(session)
 
     _write_jsonl(out / "candidates.jsonl", all_candidates)
-    redacted = redact(session)
-    _write_yaml(out / "dossier_redacted.yaml", redacted.model_dump(mode="json"))
 
     advanced = transition(session, DossierState.MAINTAINER_CONTACTED)
     if advanced:
+        # Practice mode: real state stays draft; the demonstrated flow is
+        # recorded in simulated_state only and labeled SIMULATED.
         session.receipts.append(DossierReceipt(
             kind="none", reference="",
             note="course rehearsal; no maintainer contacted",
         ))
         store.save(session)
 
+    redacted = redact(session)
+    _write_yaml(out / "dossier_redacted.yaml", redacted.model_dump(mode="json"))
+
     summary = {
         "session_id": session.session_id,
         "practice_mode": session.practice_mode,
         "state": session.state.value,
+        "simulated_state": (
+            session.simulated_state.value if session.simulated_state else None
+        ),
         "disclosure_note": redacted.disclosure_note,
         "targets": [t["case_id"] for t in _TARGETS],
         "observations": len(session.entries),
@@ -294,6 +300,8 @@ async def main() -> None:
                      "unknown targets; not a real-world 0-day claim",
             "novelty": "no preset positive in knowledge table; candidates "
                        "require human review",
+            "disclosure": "SIMULATED state machine rehearsal only; real state "
+                          "is draft, nothing submitted",
         },
         "artifacts": {
             "session": str(store._path(session.session_id)),

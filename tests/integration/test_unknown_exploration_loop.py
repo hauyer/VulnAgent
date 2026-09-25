@@ -97,14 +97,17 @@ def test_exploratory_session_never_claims_novelty(tmp_path: Path) -> None:
     assert draft.practice_mode is True
     assert draft.candidate_count == 0  # all deduped as known
 
-    # Practice-mode state machine: draft -> maintainer_contacted only.
+    # Practice-mode state machine: demonstration advance moves only the
+    # simulated state; the real state stays draft (kind=none is never a
+    # receipt for the real machine).
     assert transition(session, DossierState.MAINTAINER_CONTACTED) is True
     assert transition(session, DossierState.ACKNOWLEDGED) is False
 
     store = DossierStore(tmp_path)
     store.save(session)
     loaded = store.load(session.session_id)
-    assert loaded.state is DossierState.MAINTAINER_CONTACTED
+    assert loaded.state is DossierState.DRAFT
+    assert loaded.simulated_state is DossierState.MAINTAINER_CONTACTED
 
 
 def test_negative_observation_not_counted_as_tn() -> None:

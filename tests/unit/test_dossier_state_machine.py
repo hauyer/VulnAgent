@@ -29,22 +29,90 @@ def _session(practice: bool = True) -> ExploratorySession:
 # -- state machine -----------------------------------------------------------
 
 
-def test_state_machine_forward_only() -> None:
+def test_real_mode_requires_valid_receipt() -> None:
     session = _session(practice=False)
-    assert transition(session, DossierState.SUBMITTED) is True
+    # No receipt: refused.
+    assert transition(session, DossierState.SUBMITTED) is False
+    assert session.state is DossierState.DRAFT
+    # kind=none is not a receipt: still refused even when passed explicitly.
+    assert (
+        transition(
+            session, DossierState.SUBMITTED, receipt=DossierReceipt(kind="none")
+        )
+        is False
+    )
+    # Valid ticket receipt with reference: allowed.
+    assert (
+        transition(
+            session,
+            DossierState.SUBMITTED,
+            receipt=DossierReceipt(kind="ticket", reference="T-77"),
+        )
+        is True
+    )
     assert session.state is DossierState.SUBMITTED
     # Cannot go backwards or skip steps.
     assert transition(session, DossierState.DRAFT) is False
     assert transition(session, DossierState.PUBLISHED_ACCEPTED) is False
-    assert transition(session, DossierState.ACKNOWLEDGED) is True
-
-
-def test_practice_mode_blocks_beyond_submitted() -> None:
-    session = _session(practice=True)
-    assert transition(session, DossierState.MAINTAINER_CONTACTED) is True
+    # Each real advance needs its own target-matching receipt.
     assert transition(session, DossierState.ACKNOWLEDGED) is False
-    assert transition(session, DossierState.FIXED) is False
-    assert session.state is DossierState.MAINTAINER_CONTACTED
+    assert (
+        transition(
+            session,
+            DossierState.ACKNOWLEDGED,
+            receipt=DossierReceipt(kind="email", reference="m1"),
+        )
+        is True
+    )
+
+
+def test_submitted_requires_reference() -> None:
+    session = _session(practice=False)
+    assert (
+        transition(
+            session,
+            DossierState.SUBMITTED,
+            receipt=DossierReceipt(kind="platform", reference=""),
+        )
+        is False
+    )
+    assert (
+        transition(
+            session,
+            DossierState.SUBMITTED,
+            receipt=DossierReceipt(kind="platform", reference="CNVD-2026-9999"),
+        )
+        is True
+    )
+
+
+def test_practice_mode_never_moves_real_state() -> None:
+    session = _session(practice=True)
+    # Demonstration advance is allowed but only as simulated_state.
+    assert transition(session, DossierState.MAINTAINER_CONTACTED) is True
+    assert session.state is DossierState.DRAFT
+    assert session.simulated_state is DossierState.MAINTAINER_CONTACTED
+    # The simulated chain can be demonstrated further along legal edges.
+    assert transition(session, DossierState.SUBMITTED) is True
+    assert session.simulated_state is DossierState.SUBMITTED
+    assert session.state is DossierState.DRAFT
+    # Illegal/skip edges still refused on the simulated chain.
+    assert transition(session, DossierState.PUBLISHED_ACCEPTED) is False
+    assert transition(session, DossierState.DRAFT) is False
+
+
+def test_kind_none_never_advances_real_state() -> None:
+    session = _session(practice=False)
+    session.receipts.append(DossierReceipt(kind="none", note="no contact"))
+    assert (
+        transition(
+            session,
+            DossierState.MAINTAINER_CONTACTED,
+            receipt=DossierReceipt(kind="none"),
+        )
+        is False
+    )
+    assert session.state is DossierState.DRAFT
 
 
 def test_receipts_are_explicit_not_auto_generated() -> None:
@@ -85,6 +153,16 @@ def test_redaction_keeps_hashes_and_counts_not_details() -> None:
     assert "0x41414141" not in joined
     assert "66a2d354b693c0a9488d0a2af5deff4829808f05b572ae0f65d9edfbb39e19c3" not in joined
     assert "65d9edfbb39e19c3" in draft.candidate_refs[0]
+    assert "Nothing has been submitted" in draft.disclosure_note
+
+
+def test_redaction_labels_simulated_state_explicitly() -> None:
+    session = _session(practice=True)
+    assert transition(session, DossierState.MAINTAINER_CONTACTED) is True
+    draft = redact(session)
+    assert draft.simulated_state is DossierState.MAINTAINER_CONTACTED
+    assert draft.state is DossierState.DRAFT
+    assert "SIMULATED" in draft.disclosure_note
     assert "Nothing has been submitted" in draft.disclosure_note
 
 

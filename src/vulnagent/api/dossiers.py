@@ -68,6 +68,12 @@ async def record_receipt(session_id: str, receipt: DossierReceipt) -> dict:
 
 @router.post("/dossiers/{session_id}/state")
 async def advance_state(session_id: str, target_state: str) -> dict:
+    """Advance the disclosure state machine.
+
+    Real mode requires a valid human receipt already recorded on the session
+    (kind != none; reference required for submitted / published). Practice
+    mode only moves ``simulated_state`` and the real state stays draft.
+    """
     store = _store()
     try:
         parsed = DossierState(target_state)
@@ -77,14 +83,28 @@ async def advance_state(session_id: str, target_state: str) -> dict:
         session = store.load(session_id)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="dossier not found")
-    advanced = transition(session, parsed)
+    basis = next(
+        (r for r in reversed(session.receipts) if r.kind != "none"),
+        None,
+    )
+    advanced = transition(session, parsed, receipt=basis)
     if not advanced:
         raise HTTPException(
             status_code=422,
-            detail=f"illegal transition from {session.state.value} to {parsed.value}",
+            detail=(
+                f"illegal transition from {session.state.value} to {parsed.value}"
+                " (real mode requires a valid human receipt)"
+            ),
         )
     store.save(session)
-    return {"session_id": session_id, "state": session.state.value}
+    return {
+        "session_id": session_id,
+        "state": session.state.value,
+        "simulated_state": (
+            session.simulated_state.value if session.simulated_state else None
+        ),
+        "practice_mode": session.practice_mode,
+    }
 
 
 @router.get("/dossiers/{session_id}/redacted")
