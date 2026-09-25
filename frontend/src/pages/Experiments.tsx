@@ -9,6 +9,7 @@ const EXPERIMENT_LABELS: Record<string, string> = {
   "wp8-ablation": "WP8 引擎组合消融与误报分析",
   "wp8-exploitgym": "WP8 真实 ExploitGym 基准接入（登记/筛选/机理候选）",
   "wp8-unknown-demo": "WP8 未公开目标未知探索示范",
+  "wp8-zero-day": "WP8 0day 能力演练（真实 fuzz 未知目标发现）",
 };
 
 export default function Experiments() {

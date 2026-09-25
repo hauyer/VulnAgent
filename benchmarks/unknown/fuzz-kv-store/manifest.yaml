@@ -1,0 +1,24 @@
+# kv_store — authorized unknown fuzz target (CWE-416 use-after-free)
+#
+# The vulnerability location is intentionally NOT annotated in the source:
+# this target is treated as an *unknown target* for the 0-day-capability
+# rehearsal. The paired fix.c is used for the crash/fixed contrast only.
+case_id: fuzz-kv-store
+family: use_after_free
+language: c
+cwe_id: "CWE-416"
+compiler: clang
+sanitizer: address
+unknown: true
+authorization:
+  statement: self-authored unpublished key-value store; authorized local dynamic analysis
+  dynamic_run: true
+compile:
+  flags: ["-O0", "-fsanitize=fuzzer,address"]
+  vuln_source: vuln.c
+  fix_source: fix.c
+  harness_entry: LLVMFuzzerTestOneInput
+expected:
+  sanitizer_kind: AddressSanitizer
+  crash_signature: "heap-use-after-free"
+  fixed_outcome: clean

@@ -1,0 +1,24 @@
+# slot_table — authorized unknown fuzz target (CWE-787 heap OOB write)
+#
+# The vulnerability location is intentionally NOT annotated in the source:
+# this target is treated as an *unknown target* for the 0-day-capability
+# rehearsal. The paired fix.c is used for the crash/fixed contrast only.
+case_id: fuzz-slot-table
+family: heap_overflow
+language: c
+cwe_id: "CWE-787"
+compiler: clang
+sanitizer: address
+unknown: true
+authorization:
+  statement: self-authored unpublished parser; authorized local dynamic analysis
+  dynamic_run: true
+compile:
+  flags: ["-O0", "-fsanitize=fuzzer,address"]
+  vuln_source: vuln.c
+  fix_source: fix.c
+  harness_entry: LLVMFuzzerTestOneInput
+expected:
+  sanitizer_kind: AddressSanitizer
+  crash_signature: "heap-buffer-overflow"
+  fixed_outcome: clean
