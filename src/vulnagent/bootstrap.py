@@ -252,9 +252,11 @@ def build_tool_registry(
             ToolSpec(
                 name=CapabilityName.FUZZ_EXECUTE.value,
                 description=(
-                    "Run an authorization-gated fuzz capability"
+                    "Run an authorization-gated fuzz capability; a real "
+                    "libFuzzer/ASan engine replaces the controlled engine "
+                    "when injected"
                 ),
-                adapter=capabilities.fuzz_engine.run,
+                adapter=(capabilities.libfuzzer_engine or capabilities.fuzz_engine).run,
                 owner="P6",
                 capability_type="dynamic",
             ),

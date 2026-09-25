@@ -3,6 +3,11 @@
 from .backend import FuzzBackend, FuzzOutcome, PythonFuzzBackend
 from .corpus import CorpusManager, SeedGenerator
 from .harness import CoverageTracker, HarnessGenerator
+from .libfuzzer import (
+    LibFuzzerRunStats,
+    RealLibFuzzerEngine,
+    parse_libfuzzer_output,
+)
 from .triage import CrashRecord, CrashTriage
 
 __all__ = [
@@ -15,4 +20,7 @@ __all__ = [
     "HarnessGenerator",
     "CrashRecord",
     "CrashTriage",
+    "LibFuzzerRunStats",
+    "RealLibFuzzerEngine",
+    "parse_libfuzzer_output",
 ]

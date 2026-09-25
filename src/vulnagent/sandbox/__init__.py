@@ -7,6 +7,12 @@ from .backends import (
     SubprocessBackend,
     WindowsJobBackend,
 )
+from .compiler import (
+    CompileResult,
+    clang_version,
+    compile_libfuzzer_target,
+    locate_clang,
+)
 
 __all__ = [
     "SandboxManager",
@@ -15,4 +21,8 @@ __all__ = [
     "SandboxBackend",
     "SubprocessBackend",
     "WindowsJobBackend",
+    "CompileResult",
+    "clang_version",
+    "compile_libfuzzer_target",
+    "locate_clang",
 ]

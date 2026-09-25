@@ -1,0 +1,38 @@
+# WP4 case: cp_parse (length-prefixed stack copy overflow, CWE-121)
+#
+# Local authorized dynamic-analysis case. The vulnerable and fixed variants
+# share the same interface; the fixed build is used for the crash/fixed
+# outcome contrast required by the development guide 8.4.
+
+case_id: cp_parse
+family: stack_buffer_overflow
+language: c
+cwe_id: "CWE-121"
+compiler: clang-cl
+sanitizer: address
+
+# LLVM libFuzzer runtime on Windows loads the dynamic ASan runtime next to
+# the executable; the compiler sandbox copies it into the build directory.
+# -O0 is required on Windows: -O1 optimizes away the ASan-instrumented stack
+# accesses (verified locally), so the overflow is undetectable at -O1.
+compile:
+  flags: ["-O0", "-fsanitize=fuzzer,address"]
+  vuln_source: vuln.c
+  fix_source: fix.c
+  harness_entry: LLVMFuzzerTestOneInput
+
+# Seeds are legal/boundary inputs only (no system commands, no exploits).
+seeds_dir: seeds
+seed_hashes:
+  len3_abc: "c602df104f2bfde94e05197faa97f07dda1d43d559f0c423f93e9bb9669d24ff"
+  len0_empty: "96a296d224f285c67bee93c30f8a309157f0daa35dc5b87e410b78630a09cfc7"
+  truncated: "ca2fd00fa001190744c15c317643ab092e7048ce086a243e2be9437c898de1bb"
+  len8_ok: "4ec0080fb32a7a75f918482cc37e72d70839e30f3c8316a79ad223858ed7601c"
+
+# Expected behavior for the acceptance gate:
+#  - vuln build: ASan reports stack-buffer-overflow for an oversized payload
+#  - fix build:  the same crash input exits cleanly (fixed_outcome)
+expected:
+  sanitizer_kind: AddressSanitizer
+  crash_signature: "stack-buffer-overflow"
+  fixed_outcome: clean

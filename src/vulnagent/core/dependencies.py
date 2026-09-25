@@ -61,6 +61,10 @@ class CapabilityBundle:
     semgrep_adapter: Any | None = None
     bandit_adapter: Any | None = None
 
+    # WP4 real libFuzzer/ASan engine. Optional; the default ControlledFuzzEngine
+    # (Python dynamic validation) remains the bundle default.
+    libfuzzer_engine: Any | None = None
+
     def __post_init__(self) -> None:
         """Fail fast when an injected capability is structurally invalid.
 
