@@ -1,10 +1,10 @@
-"""V0.8 Dynamic Confirmation: dynamic validation planner.
+"""V0.8/V0.9 Dynamic Confirmation: dynamic validation planners.
 
-Selects the dynamic-validation strategy for a candidate: candidates with a
-fuzzable entry point and runtime-confirmable sink shape (division, unchecked
-index, command execution) are routed to the Python fuzz backend; everything
-else stays static.  This is the ``Planner 选择 dynamic validation`` step of
-the V0.8 acceptance pipeline.
+``DynamicValidationPlanner`` routes candidates with a fuzzable sink to the
+Python fuzz backend.  ``CostAwarePlanner`` (V0.9) adds cost-aware tool
+selection: cheap fuzz first, symbolic reachability (angr) only when fuzzing
+cannot cover the candidate path — e.g. binary targets with no native
+harness.
 """
 
 from __future__ import annotations
@@ -18,14 +18,18 @@ from vulnagent.contracts import VulnerabilityCandidate
 _SUBPROCESS_RUN_SINK = "subprocess" + ".run"
 _DYNAMIC_SINKS = {"div", "subscript", _SUBPROCESS_RUN_SINK, "system", "eval", "exec"}
 
+# Estimated cost rank per strategy (lower = cheaper).
+STRATEGY_COST = {"static-only": 1, "python-fuzz": 10, "symbolic": 100}
+
 
 @dataclass(frozen=True, slots=True)
 class DynamicPlan:
     """Routing decision for one candidate."""
 
     candidate_id: str
-    strategy: str  # python-fuzz | static-only
+    strategy: str  # python-fuzz | symbolic | static-only
     backend: str | None = None
+    cost_rank: int = STRATEGY_COST["static-only"]
     rationale: str = ""
 
 
@@ -42,6 +46,7 @@ class DynamicValidationPlanner:
                 candidate_id=candidate.vulnerability_id,
                 strategy="python-fuzz",
                 backend="PythonFuzzBackend",
+                cost_rank=STRATEGY_COST["python-fuzz"],
                 rationale=(
                     f"sink={sink} source_kinds={source_kinds}: runtime-confirmable "
                     "via fuzz campaign"
@@ -51,4 +56,38 @@ class DynamicValidationPlanner:
             candidate_id=candidate.vulnerability_id,
             strategy="static-only",
             rationale=f"sink={sink}: no dynamic harness applies",
+        )
+
+
+class CostAwarePlanner:
+    """V0.9 cost-aware tool selection: fuzz first, angr when needed."""
+
+    def plan(self, candidate: VulnerabilityCandidate) -> DynamicPlan:
+        sink = str(candidate.metadata.get("sink", ""))
+        source_type = candidate.source_type
+        harness_available = candidate.metadata.get("harness_available", False)
+        if sink in _DYNAMIC_SINKS and harness_available:
+            return DynamicPlan(
+                candidate_id=candidate.vulnerability_id,
+                strategy="python-fuzz",
+                backend="PythonFuzzBackend",
+                cost_rank=STRATEGY_COST["python-fuzz"],
+                rationale="cheapest dynamic validation applies (fuzz first)",
+            )
+        if candidate.metadata.get("callsite_address"):
+            return DynamicPlan(
+                candidate_id=candidate.vulnerability_id,
+                strategy="symbolic",
+                backend="SymbolicEngine",
+                cost_rank=STRATEGY_COST["symbolic"],
+                rationale=(
+                    f"source_type={source_type} callsite present and no fuzz "
+                    "harness: symbolic reachability (angr) is the only dynamic "
+                    "validation path"
+                ),
+            )
+        return DynamicPlan(
+            candidate_id=candidate.vulnerability_id,
+            strategy="static-only",
+            rationale=f"sink={sink}: no dynamic path applies",
         )

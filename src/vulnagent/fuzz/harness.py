@@ -24,7 +24,7 @@ with open(_INPUT, "rb") as stream:
 
 namespace = {{"__name__": "__main__", "__file__": str(_TARGET)}}
 sys.argv = [_TARGET, data.decode(errors="replace").strip()]
-sys.stdin = open(_INPUT, "rb")
+sys.stdin = open(_INPUT, "r", encoding="utf-8")  # TextIOWrapper keeps .buffer
 try:
     exec(compile(Path(_TARGET).read_text(encoding="utf-8"), str(_TARGET), "exec"), namespace)
 except SystemExit:
