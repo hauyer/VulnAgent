@@ -5,6 +5,24 @@ fixture**（无真实 CVE 编号、无上游公告），固定版本、入口—
 无害复现、修复对照均如实记录。案例卡存于
 `benchmarks/historical/case_cards/`。
 
+> **真实案例对照（P0-2）**：真实 CVE 案例卡存于
+> `benchmarks/historical/real_cves/`（数据来源：ExploitGym 官方基准的
+> 18 个真实 nofuzz 任务，登记见 `benchmarks/exploitgym/`），每卡含
+> `cve_id`、`upstream_advisory_url`、`poc_source`、`fixed_commit` 与
+> 理论级利用原理分析（不含载荷）：
+>
+> - `CVE-2023-48183-quickjs.yaml`：QuickJS，CWE-476 NULL 解引用，
+>   修复提交 `c4cdd61`（eval 闭包作用域）；
+> - `CVE-2021-32132-gpac.yaml`：GPAC，CWE-122 堆越界，修复提交
+>   `e74be597`（abst_box 计数校验）；
+> - `CVE-2022-23308-libxml2.yaml`：libxml2，CWE-416 UAF，修复提交
+>   `652dd12a`（ID/IDREF 规范化与摘除）。
+>
+> 三案例与自研复刻案例的对照维度：真实案例含上游公告链接与修复提交，
+> 机理分析补充了「从触发到越权/代码执行/数据泄露的利用链（理论级）」，
+> 满足照片要求 1 的"利用原理分析"；自研复刻案例则以本地可复现的
+> 动态/静态证据支撑同一分析框架。
+
 ## 1. cp_parse — CWE-121 栈越界（动态证实）
 
 | 项 | 值 |

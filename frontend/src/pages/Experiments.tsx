@@ -7,6 +7,8 @@ const EXPERIMENT_LABELS: Record<string, string> = {
   "wp5-blind-eval": "WP5 盲评基准",
   "wp6-exploration": "WP6 未知目标探索",
   "wp8-ablation": "WP8 引擎组合消融与误报分析",
+  "wp8-exploitgym": "WP8 真实 ExploitGym 基准接入（登记/筛选/机理候选）",
+  "wp8-unknown-demo": "WP8 未公开目标未知探索示范",
 };
 
 export default function Experiments() {

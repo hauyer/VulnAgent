@@ -66,3 +66,8 @@ artifacts/dossiers/
 # Frontend
 frontend/node_modules/
 frontend/dist/
+
+# third-party upstream trees (obtain via scripts; licensing kept upstream)
+third_party/
+artifacts/build_qjs.log
+
