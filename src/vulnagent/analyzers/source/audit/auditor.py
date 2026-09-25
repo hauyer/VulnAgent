@@ -35,80 +35,18 @@ from .rules import (
 LOGGER = logging.getLogger(__name__)
 
 _DEFAULT_MAX_FILE_BYTES = 1_000_000
-_ALL_CATEGORIES = frozenset(
-    {"command", "sql", "path", "deserialization", "code_execution"}
+from .registry import (
+    ALL_CATEGORIES as _ALL_CATEGORIES,
+    CODE_EXECUTION_SINKS as _CODE_EXECUTION_SINKS,
+    COMMAND_SINKS as _COMMAND_SINKS,
+    DESERIALIZATION_SINKS as _DESERIALIZATION_SINKS,
+    PATH_SINKS as _PATH_SINKS,
+    REQUEST_SOURCE_SUFFIXES as _REQUEST_SOURCE_SUFFIXES,
+    SANITIZERS as _SANITIZERS,
+    SOURCE_ATTRIBUTES as _SOURCE_ATTRIBUTES,
+    SOURCE_CALLS as _SOURCE_CALLS,
+    SUBPROCESS_SINKS as _SUBPROCESS_SINKS,
 )
-
-_COMMAND_SINKS = frozenset({"os.system", "os.popen"})
-_SUBPROCESS_SINKS = frozenset(
-    {
-        "subprocess.call",
-        "subprocess.check_call",
-        "subprocess.check_output",
-        "subprocess.Popen",
-        "subprocess.run",
-    }
-)
-_DESERIALIZATION_SINKS = frozenset(
-    {
-        "pickle.load",
-        "pickle.loads",
-        "marshal.load",
-        "marshal.loads",
-        "dill.load",
-        "dill.loads",
-        "yaml.load",
-    }
-)
-_PATH_SINKS = frozenset(
-    {
-        "open",
-        "io.open",
-        "os.open",
-        "pathlib.Path",
-        "flask.send_file",
-        "shutil.copy",
-        "shutil.copy2",
-        "shutil.copyfile",
-        "shutil.move",
-        "shutil.rmtree",
-    }
-)
-_CODE_EXECUTION_SINKS = frozenset({"eval", "exec", "builtins.eval", "builtins.exec"})
-_SOURCE_CALLS = frozenset(
-    {
-        "input",
-        "builtins.input",
-        "os.getenv",
-        "os.environ.get",
-        "flask.request.get_json",
-    }
-)
-_REQUEST_SOURCE_SUFFIXES = (
-    "request.args.get",
-    "request.form.get",
-    "request.values.get",
-    "request.cookies.get",
-    "request.headers.get",
-    "request.get_json",
-)
-_SOURCE_ATTRIBUTES = frozenset(
-    {
-        "request.args",
-        "request.form",
-        "request.values",
-        "request.cookies",
-        "request.headers",
-        "request.json",
-        "sys.argv",
-        "os.environ",
-    }
-)
-_SANITIZERS: dict[str, str] = {
-    "shlex.quote": "command",
-    "os.path.basename": "path",
-    "werkzeug.utils.secure_filename": "path",
-}
 _ROUTE_DECORATORS = frozenset({"route", "get", "post", "put", "patch", "delete"})
 
 _RULES_BY_CATEGORY = {
@@ -248,6 +186,7 @@ class _FileAuditor:
         displayed_path: str,
         source_lines: list[str],
         aliases: Mapping[str, str],
+        summaries: Mapping[str, FunctionSummary] | None = None,
     ) -> None:
         self.result = result
         self.displayed_path = displayed_path
@@ -257,7 +196,7 @@ class _FileAuditor:
         if self.module_name.endswith(".__init__"):
             self.module_name = self.module_name.removesuffix(".__init__")
         self.matches: list[_Match] = []
-        self._summaries: dict[str, FunctionSummary] = {}
+        self._summaries: dict[str, FunctionSummary] = dict(summaries or {})
         self._collecting_summary: bool = False
         self._summary_state: tuple[
             dict[str, list[tuple[str, str]]],
@@ -816,6 +755,9 @@ class PythonSourceAuditor:
             return []
 
         root = root.resolve()
+        # Phase 1: project-wide function summaries (cross-file resolution).
+        project_summaries = self._collect_project_summaries(result, root)
+        # Phase 2: audit each file with the shared summary table.
         matches: list[_Match] = []
         for displayed_path in sorted(set(result.files)):
             path = self._resolve_inventory_path(root, displayed_path)
@@ -832,6 +774,7 @@ class PythonSourceAuditor:
                     displayed_path=displayed_path,
                     source_lines=source.splitlines(),
                     aliases=aliases,
+                    summaries=project_summaries,
                 ).audit(tree)
             )
 
@@ -845,6 +788,35 @@ class PythonSourceAuditor:
             key=lambda item: (item.file_path, item.line, item.rule.rule_id, item.sink),
         )
         return [self._candidate(result, item) for item in ordered]
+
+    def _collect_project_summaries(
+        self,
+        result: SourceAnalysisResult,
+        root: Path,
+    ) -> dict[str, FunctionSummary]:
+        """Extract summaries from every inventory file once, keyed by the
+        qualified function name, so call sites in other files can resolve
+        A -> B -> sink chains across module boundaries."""
+        project_summaries: dict[str, FunctionSummary] = {}
+        for displayed_path in sorted(set(result.files)):
+            path = self._resolve_inventory_path(root, displayed_path)
+            if path is None or path.suffix.casefold() not in {".py", ".pyi"}:
+                continue
+            parsed = self._read_tree(path, displayed_path, self._max_file_bytes(result))
+            if parsed is None:
+                continue
+            tree, source = parsed
+            collector = _FileAuditor(
+                result=result,
+                displayed_path=displayed_path,
+                source_lines=source.splitlines(),
+                aliases=self._aliases_for(result, displayed_path),
+            )
+            collector._collect_summaries(tree)
+            for name, summary in collector._summaries.items():
+                if name not in project_summaries:
+                    project_summaries[name] = summary
+        return project_summaries
 
     @staticmethod
     def _resolve_inventory_path(root: Path, displayed_path: str) -> Path | None:
@@ -964,8 +936,7 @@ class PythonSourceAuditor:
                 "column": match.column,
                 "dynamic_only": match.dynamic_only,
                 "limitations": [
-                    "interprocedural taint via in-file function summaries",
-                    "cross-file summaries not yet resolved",
+                    "interprocedural taint via project-wide function summaries",
                     "candidate requires independent verification",
                 ],
             },

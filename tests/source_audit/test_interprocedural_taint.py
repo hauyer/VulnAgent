@@ -76,7 +76,7 @@ async def test_three_layer_helper_chain_detected(tmp_path: Path) -> None:
     chained = [item for item in command_findings if "->" in item.metadata["sink"]]
     assert chained, "interprocedural call-site matches must carry the chain"
     for item in chained:
-        assert "interprocedural taint via in-file function summaries" in item.metadata["limitations"]
+        assert "interprocedural taint via project-wide function summaries" in item.metadata["limitations"]
         assert item.metadata["source_kinds"] == ["input"]
 
 
@@ -165,3 +165,28 @@ async def test_function_without_effect_keeps_conservative_passthrough(
     assert len(findings) == 1
     assert findings[0].metadata["sink"] == "os.system"
     assert findings[0].metadata["source_kinds"] == ["input"]
+
+
+async def test_cross_file_helper_chain_detected(tmp_path: Path) -> None:
+    (tmp_path / "helper.py").write_text(
+        "import subprocess\n"
+        "def run_build(command: str):\n"
+        "    return subprocess.run(command, shell=True, check=False)\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "app.py").write_text(
+        "from helper import run_build\n"
+        "def main():\n"
+        "    version = input('version: ')\n"
+        "    run_build(version)\n",
+        encoding="utf-8",
+    )
+    parsed = await SourceProjectParser().analyze(
+        ProjectInput(task_id="task-1", target_id="target-1", project_path=str(tmp_path))
+    )
+    findings = await PythonSourceAuditor().audit(parsed)
+
+    chained = [item for item in findings if "->" in item.metadata["sink"]]
+    assert chained, "cross-file call site must resolve the helper summary"
+    assert any("run_build->subprocess.run" in item.metadata["sink"] for item in chained)
+    assert all(item.metadata["source_kinds"] == ["input"] for item in chained)
