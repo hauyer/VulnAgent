@@ -1,6 +1,14 @@
 """Bounded, provider-neutral agent workflow runtime."""
 
 from .capability_names import CapabilityName
+from .evidence_gap import (
+    ActionBinding,
+    CandidateGap,
+    EvidenceGapKind,
+    EvidenceGapPlanner,
+    PlanDecision,
+    PlannedAction,
+)
 from .policies import RuntimePolicy
 from .router import (
     AgentRoute,
@@ -22,11 +30,17 @@ from .tool_registry import (
 
 
 __all__ = [
+    "ActionBinding",
     "AgentRoute",
     "AgentRouter",
     "AgentRuntime",
     "AgentSuite",
     "CapabilityName",
+    "CandidateGap",
+    "EvidenceGapKind",
+    "EvidenceGapPlanner",
+    "PlanDecision",
+    "PlannedAction",
     "RouteDecision",
     "RuntimePolicy",
     "RuntimeResult",

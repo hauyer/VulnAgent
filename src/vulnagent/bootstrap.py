@@ -19,13 +19,17 @@ from vulnagent.agent_runtime import (
     AgentRoute,
     AgentRuntime,
     CapabilityName,
+    EvidenceGapPlanner,
     RuntimePolicy,
+    Supervisor,
     ToolRegistry,
     ToolSpec,
 )
 from vulnagent.agent_runtime.errors import (
     ToolRegistrationError,
 )
+from vulnagent.adapters.bandit.adapter import BanditAdapter
+from vulnagent.adapters.semgrep.adapter import SemgrepAdapter
 from vulnagent.agents import (
     BinaryAnalysisAgent,
     CodeAuditAgent,
@@ -199,6 +203,28 @@ def build_tool_registry(
                 name=CapabilityName.SOURCE_AUDIT.value,
                 description="Audit parsed source structure",
                 adapter=capabilities.source_auditor.audit,
+                owner="P3",
+                capability_type="source",
+            ),
+            ToolSpec(
+                name=CapabilityName.SOURCE_SCAN_SEMGREP.value,
+                description=(
+                    "Run the Semgrep external engine on a source target; "
+                    "a missing engine is reported as unavailable, never as "
+                    "zero findings"
+                ),
+                adapter=(capabilities.semgrep_adapter or SemgrepAdapter()).execute,
+                owner="P3",
+                capability_type="source",
+            ),
+            ToolSpec(
+                name=CapabilityName.SOURCE_SCAN_BANDIT.value,
+                description=(
+                    "Run the Bandit external engine on a Python source target; "
+                    "a missing engine is reported as unavailable, never as "
+                    "zero findings"
+                ),
+                adapter=(capabilities.bandit_adapter or BanditAdapter()).execute,
                 owner="P3",
                 capability_type="source",
             ),
@@ -402,6 +428,7 @@ def build_application(
     runtime_policy: RuntimePolicy | None = None,
     context_repository: ContextRepository | None = None,
     binary_reverse_workflow: BinaryReverseWorkflow | None = None,
+    gap_planner: EvidenceGapPlanner | None = None,
 ) -> ApplicationServices:
     """Compose a complete VulnAgent application dependency graph.
 
@@ -493,6 +520,11 @@ def build_application(
         publish_event=resolved_event_bus.publish,
         tool_registry=resolved_tool_registry,
         llm=resolved_llm,
+        supervisor=Supervisor(
+            resolved_runtime_policy.max_analysis_retries,
+            available_routes=set(resolved_agent_registry.list_agents()),
+            gap_planner=gap_planner,
+        ),
     )
 
     orchestrator = Orchestrator(
@@ -534,8 +566,13 @@ def build_mock_application(
 def build_v03_source_application(
     *,
     settings: Settings | None = None,
+    gap_planner: EvidenceGapPlanner | None = None,
 ) -> ApplicationServices:
-    """Build the canonical V0.3 source-analysis application."""
+    """Build the canonical V0.3 source-analysis application.
+
+    Evidence-gap planning (WP3) is enabled by default for this profile; pass
+    ``gap_planner=None`` explicitly to keep the fixed V0.2 order.
+    """
 
     resolved_settings = settings if settings is not None else get_settings()
     reverse_workflow = (
@@ -547,6 +584,7 @@ def build_v03_source_application(
         build_v03_source_capabilities(resolved_settings),
         settings=resolved_settings,
         binary_reverse_workflow=reverse_workflow,
+        gap_planner=gap_planner or EvidenceGapPlanner(),
     )
 
 
