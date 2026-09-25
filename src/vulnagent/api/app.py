@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from vulnagent.api import dossiers
 from vulnagent.api.routes import (
     acceptance,
     evidence,
@@ -142,6 +143,7 @@ def create_app(
     application.include_router(evidence.router, prefix="/api")
     application.include_router(reports.router, prefix="/api")
     application.include_router(reviews.router, prefix="/api")
+    application.include_router(dossiers.router, prefix="/api")
     application.include_router(verifications.router, prefix="/api")
     application.include_router(uploads.router, prefix="/api")
     application.include_router(acceptance.router, prefix="/api")
