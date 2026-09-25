@@ -197,6 +197,7 @@ class _FileAuditor:
             self.module_name = self.module_name.removesuffix(".__init__")
         self.matches: list[_Match] = []
         self._summaries: dict[str, FunctionSummary] = dict(summaries or {})
+        self._local_called: set[str] = set()
         self._collecting_summary: bool = False
         self._summary_state: tuple[
             dict[str, list[tuple[str, str]]],
@@ -205,9 +206,22 @@ class _FileAuditor:
         ] | None = None
 
     def audit(self, tree: ast.Module) -> list[_Match]:
+        self._collect_local_calls(tree)
         self._collect_summaries(tree)
         self._scan_block(tree.body, {}, None)
         return self.matches
+
+    def _collect_local_calls(self, tree: ast.Module) -> None:
+        """Names of functions invoked inside this file (qualified + bare)."""
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            raw = _expression_name(node.func) or ""
+            resolved = self._resolve_name(raw)
+            if not resolved:
+                continue
+            self._local_called.add(resolved)
+            self._local_called.add(resolved.rsplit(".", 1)[-1])
 
     # ----------------------------------------------------------- summaries
 
@@ -465,6 +479,29 @@ class _FileAuditor:
         if summary is not None:
             self._maybe_add_summary_match(call, summary, state, function_name)
 
+    def _is_summarized_parameter(
+        self,
+        argument: ast.expr,
+        function_name: str | None,
+    ) -> bool:
+        """True when a bare parameter of a summarized function reaches a sink.
+
+        Such parameter-driven dynamic candidates are expressed by the
+        summary's call-site matches instead of duplicated inside the body
+        (keeps validated-path scenarios free of false positives).
+        """
+        if function_name is None or not isinstance(argument, ast.Name):
+            return False
+        bare = function_name.rsplit(".", 1)[-1]
+        if bare not in self._local_called and function_name not in self._local_called:
+            return False  # no call site in this file -> dynamic signal kept
+        summary = self._summaries.get(function_name)
+        if summary is None:
+            summary = self._summaries.get(bare)
+        if summary is None:
+            return False
+        return argument.id in summary.parameters
+
     def _maybe_add_summary_match(
         self,
         call: ast.Call,
@@ -535,6 +572,8 @@ class _FileAuditor:
             and not taint.was_sanitized
             and not taint.clean_from
         ):
+            if self._is_summarized_parameter(argument, function_name):
+                return  # modeled by the callee summary; reported at call sites
             self._add(rule, call, sink, taint, True, function_name)
 
     def _record_summary_flow(self, rule: AuditRule, taint: _Taint, sink: str) -> None:
@@ -644,7 +683,8 @@ class _FileAuditor:
             self._inspect_expression(statement.test, current, function_name)
             left = self._scan_block(statement.body, current, function_name)
             right = self._scan_block(statement.orelse, current, function_name)
-            return self._merge_states(current, left, right)
+            merged = self._merge_states(current, left, right)
+            return self._apply_guard(statement, merged)
         if isinstance(statement, (ast.For, ast.AsyncFor)):
             self._inspect_expression(statement.iter, current, function_name)
             loop_state = dict(current)
@@ -740,9 +780,76 @@ class _FileAuditor:
         merged: dict[str, _Taint] = {}
         for name in names:
             value = _combine(state[name] for state in states if name in state)
-            if value.origins:
+            if value.origins or value.was_sanitized or value.clean_from:
                 merged[name] = value
         return merged
+
+    def _apply_guard(
+        self,
+        statement: ast.If,
+        state: dict[str, _Taint],
+    ) -> dict[str, _Taint]:
+        """Path-condition semantics: ``if <guard>(x): return/raise`` clears
+        ``x`` for the statements after the branch (validation barrier).
+
+        Only terminating guards count: a body that ends in ``return`` or
+        ``raise`` proves execution after the If has passed validation.
+        """
+        if not self._is_terminating_guard(statement):
+            return state
+        guarded = self._guard_targets(statement.test)
+        if not guarded:
+            return state
+        result = dict(state)
+        for name in guarded:
+            taint = state.get(name)
+            if taint is not None and taint.origins:
+                result[name] = _Taint(
+                    origins=taint.origins,
+                    trail=(*taint.trail, f"guarded:{_expression_name(statement.test) or 'guard'}"),
+                    unsafe_for=frozenset(),
+                    was_sanitized=taint.was_sanitized,
+                )
+        return result
+
+    @staticmethod
+    def _is_terminating_guard(statement: ast.If) -> bool:
+        if not statement.body:
+            return False
+        first = statement.body[0]
+        if isinstance(first, (ast.Return, ast.Raise)):
+            return True
+        if isinstance(first, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            return False
+        # a bare expression ending in return inside a with/try is also fine
+        return False
+
+    @staticmethod
+    def _guard_targets(test: ast.expr) -> list[str]:
+        """Extract variable names validated by a terminating guard.
+
+        Handles ``not validate(x)`` and ``validate(x) is False`` /
+        ``validate(x) == False`` shapes.
+        """
+        expr = test
+        if isinstance(expr, ast.UnaryOp) and isinstance(expr.op, ast.Not):
+            expr = expr.operand
+        elif isinstance(expr, ast.Compare) and len(expr.comparators) == 1:
+            comparator = expr.comparators[0]
+            if isinstance(comparator, ast.Constant) and comparator.value is False:
+                expr = expr.left
+            else:
+                return []
+        else:
+            return []
+        if isinstance(expr, ast.Call) and expr.args:
+            names: list[str] = []
+            for arg in expr.args:
+                name = _expression_name(arg)
+                if name and "." not in name:
+                    names.append(name)
+            return names
+        return []
 
 
 class PythonSourceAuditor:

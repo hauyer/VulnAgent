@@ -98,10 +98,10 @@ async def test_direct_helper_sink_detected_at_callsite(tmp_path: Path) -> None:
         "    run_command(payload)\n",
     )
 
-    assert len(findings) == 2
-    sinks = {item.metadata["sink"] for item in findings}
-    assert any("os.system" == sink or sink.endswith("os.system") for sink in sinks)  # inside run_command
-    assert any("run_command->os.system" in sink for sink in sinks)  # at the main() call site
+    # The callee's parameter-driven dynamic candidate is modeled by the
+    # summary; only the call-site (interprocedural) match is reported.
+    assert len(findings) == 1
+    assert any("run_command->os.system" in item.metadata["sink"] for item in findings)
 
 
 async def test_return_taint_propagates_through_summary(tmp_path: Path) -> None:
@@ -190,3 +190,68 @@ async def test_cross_file_helper_chain_detected(tmp_path: Path) -> None:
     assert chained, "cross-file call site must resolve the helper summary"
     assert any("run_build->subprocess.run" in item.metadata["sink"] for item in chained)
     assert all(item.metadata["source_kinds"] == ["input"] for item in chained)
+
+
+async def test_validate_guard_returns_clean_path(tmp_path: Path) -> None:
+    # ``if not validate(x): return`` is a terminating guard: statements after
+    # the If only run when validation passed -> zero findings.
+    findings = await _audit(
+        tmp_path,
+        "import os\n"
+        "def validate(value: str) -> bool:\n"
+        "    return len(value) < 64\n"
+        "def main():\n"
+        "    payload = input()\n"
+        "    if not validate(payload):\n"
+        "        return\n"
+        "    os.system(payload)\n",
+    )
+    assert findings == [], "validated path must not be reported"
+
+
+async def test_guard_false_comparison_shape(tmp_path: Path) -> None:
+    findings = await _audit(
+        tmp_path,
+        "import os\n"
+        "def validate(value: str) -> bool:\n"
+        "    return value.isalnum()\n"
+        "def main():\n"
+        "    payload = input()\n"
+        "    if validate(payload) is False:\n"
+        "        raise ValueError('bad input')\n"
+        "    os.system(payload)\n",
+    )
+    assert findings == [], "raise guard is a validation barrier too"
+
+
+async def test_guard_covers_helper_call(tmp_path: Path) -> None:
+    findings = await _audit(
+        tmp_path,
+        "import os\n"
+        "def run_command(command: str):\n"
+        "    os.system(command)\n"
+        "def validate(value: str) -> bool:\n"
+        "    return value.isalnum()\n"
+        "def main():\n"
+        "    payload = input()\n"
+        "    if not validate(payload):\n"
+        "        return\n"
+        "    run_command(payload)\n",
+    )
+    assert findings == [], "guard must silence callee-sink matches on the validated path"
+
+
+async def test_non_terminating_guard_is_not_a_barrier(tmp_path: Path) -> None:
+    # Body does not return/raise -> execution may continue with tainted data.
+    findings = await _audit(
+        tmp_path,
+        "import os\n"
+        "def validate(value: str) -> bool:\n"
+        "    return value.isalnum()\n"
+        "def main():\n"
+        "    payload = input()\n"
+        "    if not validate(payload):\n"
+        "        print('invalid input')\n"
+        "    os.system(payload)\n",
+    )
+    assert len(findings) == 1, "non-terminating branch must keep the candidate"
