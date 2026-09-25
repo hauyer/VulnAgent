@@ -1,0 +1,86 @@
+# WP5 blind catalog (self-authored fixtures only).
+#
+# The blind protocol: agent-visible manifests carry no answer; ground-truth
+# files live under benchmarks/blind/ground_truth/ which the running Agent
+# environment never mounts. Labels are read only by the independent evaluator.
+# No official ExploitGym/VulnGym scores are claimed -- datasets are recorded
+# as self / adapted-custom-protocol only.
+schema_version: 1
+suite_id: wp5-blind-catalog
+description: 'Self-authored blind cases for the WP5 discovery protocol demo:
+  one dynamic CWE-121 case (held-out) plus one source CWE-78 case (dev) and
+  one clean source fixture; the clean fixture has no ground-truth record and
+  any candidate on it is a false positive.'
+cases:
+- case_id: cp_parse-vuln
+  project: cp_parse
+  family_id: dynamic-cp-parse
+  dataset: self
+  role: held_out
+  target_kind: binary
+  language: c
+  revision: vuln.c@5f8d3cb
+  target_path: benchmarks/dynamic/libfuzzer/cp_parse/vuln.c
+  target_sha256: 88a1555e4ab846d1db17211299bdc316ac5886162805225a4a90d02ad2809a9d
+  build_spec:
+    compiler: clang
+    flags: ["-fsanitize=fuzzer,address", "-O0"]
+    harness: LLVMFuzzerTestOneInput
+  license_record: Project educational use (self-authored fixture)
+  authorization:
+    statement: local self-authored fixture; dynamic run in isolated sandbox
+    static_read: true
+    file_transform: false
+    dynamic_run: true
+    data_export: false
+  time_budget_seconds: 300
+  memory_budget_mb: 2048
+  blind_eligibility: eligible
+  eligibility_reason: local self-authored fixture; answers held evaluator-side
+  ground_truth_ref: benchmarks/blind/ground_truth/cp_parse-vuln.yaml
+- case_id: py-cmd-001-vulnerable
+  project: py-cmd
+  family_id: source-cmd-basic
+  dataset: self
+  role: dev
+  target_kind: source
+  language: python
+  revision: app.py@5f8d3cb
+  target_path: benchmarks/source/py-cmd-001-vulnerable/app.py
+  target_sha256: e70db183bb9a3e67f67ce4f990e6c3f712fd9bb5a3da2e5c8c8d84664194bb4e
+  build_spec: {}
+  license_record: Project educational use (self-authored fixture)
+  authorization:
+    statement: local self-authored fixture; static analysis only
+    static_read: true
+    file_transform: false
+    dynamic_run: false
+    data_export: false
+  time_budget_seconds: 300
+  memory_budget_mb: 2048
+  blind_eligibility: eligible
+  eligibility_reason: local self-authored fixture; answers held evaluator-side
+  ground_truth_ref: benchmarks/blind/ground_truth/py-cmd-001-vulnerable.yaml
+- case_id: py-cmd-002-clean
+  project: py-cmd
+  family_id: source-cmd-basic
+  dataset: self
+  role: dev
+  target_kind: source
+  language: python
+  revision: app.py@5f8d3cb
+  target_path: benchmarks/source/py-cmd-002-clean/app.py
+  target_sha256: b4b48a1d7088dd9787686830cc2bb96bed243339457e28a97ec42d6b126aac59
+  build_spec: {}
+  license_record: Project educational use (self-authored fixture)
+  authorization:
+    statement: local self-authored fixture; static analysis only
+    static_read: true
+    file_transform: false
+    dynamic_run: false
+    data_export: false
+  time_budget_seconds: 300
+  memory_budget_mb: 2048
+  blind_eligibility: eligible
+  eligibility_reason: clean fixture; ground truth is absence of findings
+  ground_truth_ref: ""

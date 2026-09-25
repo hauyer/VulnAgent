@@ -1,0 +1,12 @@
+# Evaluator-side ground truth for the py-cmd vulnerable fixture.
+schema_version: 1
+case_id: py-cmd-001-vulnerable
+vulnerability_type: command-injection
+cwe_id: CWE-78
+title: os.system built from unsanitized user input
+description: user-controlled string concatenated into a shell command
+location: app.py:10
+trigger_input: '; id'
+fixed_commit: n/a (teaching fixture)
+patch_hint: validate input before os.system
+verified: true
