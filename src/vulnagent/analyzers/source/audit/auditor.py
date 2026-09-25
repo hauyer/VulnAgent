@@ -22,6 +22,7 @@ from vulnagent.contracts import (
 )
 from vulnagent.utils.ids import new_vulnerability_id
 
+from .summaries import FunctionSummary
 from .rules import (
     AuditRule,
     COMMAND_INJECTION,
@@ -110,12 +111,25 @@ _SANITIZERS: dict[str, str] = {
 }
 _ROUTE_DECORATORS = frozenset({"route", "get", "post", "put", "patch", "delete"})
 
+_RULES_BY_CATEGORY = {
+    rule.category: rule
+    for rule in (
+        COMMAND_INJECTION,
+        DYNAMIC_CODE_EXECUTION,
+        PATH_TRAVERSAL,
+        SQL_INJECTION,
+        UNSAFE_DESERIALIZATION,
+    )
+}
+
 
 @dataclass(frozen=True, slots=True)
 class _Taint:
     origins: frozenset[str] = frozenset()
     trail: tuple[str, ...] = ()
     unsafe_for: frozenset[str] = frozenset()
+    was_sanitized: frozenset[str] = frozenset()
+    clean_from: str = ""
 
     @classmethod
     def source(cls, origin: str, line: int | None) -> "_Taint":
@@ -131,6 +145,7 @@ class _Taint:
             origins=self.origins,
             trail=(*self.trail, f"sanitized:{sanitizer}"),
             unsafe_for=self.unsafe_for - {category},
+            was_sanitized=self.was_sanitized | {category},
         )
 
     def through(self, marker: str) -> "_Taint":
@@ -149,17 +164,26 @@ class _Taint:
 def _combine(items: Iterable[_Taint]) -> _Taint:
     origins: set[str] = set()
     unsafe_for: set[str] = set()
+    sanitized: set[str] = set()
     trail: list[str] = []
+    clean_from = ""
     for item in items:
         origins.update(item.origins)
         unsafe_for.update(item.unsafe_for)
+        sanitized.update(item.was_sanitized)
+        if item.clean_from and not clean_from:
+            clean_from = item.clean_from
         for marker in item.trail:
             if marker not in trail:
                 trail.append(marker)
+    if origins:
+        clean_from = ""
     return _Taint(
         origins=frozenset(origins),
         trail=tuple(trail),
         unsafe_for=frozenset(unsafe_for),
+        was_sanitized=frozenset(sanitized),
+        clean_from=clean_from,
     )
 
 
@@ -233,10 +257,70 @@ class _FileAuditor:
         if self.module_name.endswith(".__init__"):
             self.module_name = self.module_name.removesuffix(".__init__")
         self.matches: list[_Match] = []
+        self._summaries: dict[str, FunctionSummary] = {}
+        self._collecting_summary: bool = False
+        self._summary_state: tuple[
+            dict[str, list[tuple[str, str]]],
+            set[str],
+            dict[str, list[str]],
+        ] | None = None
 
     def audit(self, tree: ast.Module) -> list[_Match]:
+        self._collect_summaries(tree)
         self._scan_block(tree.body, {}, None)
         return self.matches
+
+    # ----------------------------------------------------------- summaries
+
+    def _collect_summaries(self, tree: ast.Module) -> None:
+        """Pre-compute per-function taint summaries (V0.6 interprocedural).
+
+        Summaries are indexed by the qualified name (``app.deploy``) and, as a
+        fallback, by the bare name (``deploy``), because call sites resolve
+        helper names without the module prefix.
+        """
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                summary = self._extract_summary(node)
+                if not (summary.param_to_sinks or summary.param_taints_return or summary.sanitized_params):
+                    continue
+                self._summaries[summary.name] = summary
+                short = summary.name.rsplit(".", 1)[-1]
+                if short not in self._summaries:
+                    self._summaries[short] = summary
+
+    def _extract_summary(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> FunctionSummary:
+        """Summarize one function by re-scanning its body with tainted params."""
+        name = self._function_name(node)
+        arguments = [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]
+        if node.args.vararg is not None:
+            arguments.append(node.args.vararg)
+        if node.args.kwarg is not None:
+            arguments.append(node.args.kwarg)
+        parameter_names: list[str] = []
+        state: dict[str, _Taint] = {}
+        for argument in arguments:
+            if argument.arg in {"self", "cls"}:
+                continue
+            parameter_names.append(argument.arg)
+            state[argument.arg] = _Taint.source(f"param:{argument.arg}", node.lineno)
+        param_to_sinks: dict[str, list[tuple[str, str]]] = {}
+        param_returns: set[str] = set()
+        sanitized: dict[str, list[str]] = {}
+        self._summary_state = (param_to_sinks, param_returns, sanitized)
+        self._collecting_summary = True
+        try:
+            self._scan_block(node.body, state, name)
+        finally:
+            self._collecting_summary = False
+            self._summary_state = None
+        return FunctionSummary(
+            name=name,
+            parameters=tuple(parameter_names),
+            param_to_sinks=param_to_sinks,
+            param_taints_return=frozenset(param_returns),
+            sanitized_params=sanitized,
+        )
 
     def _resolve_name(self, raw: str) -> str:
         if not raw:
@@ -285,6 +369,9 @@ class _FileAuditor:
             category = _SANITIZERS.get(resolved)
             if category is not None:
                 return combined.sanitized(category, resolved)
+            summary = self._summaries.get(resolved)
+            if summary is not None and combined.origins:
+                return self._taint_through_summary(combined, summary, node, state)
             return combined.through(f"call:{resolved}@{getattr(node, 'lineno', '?')}")
         if isinstance(node, ast.NamedExpr):
             return self._taint(node.value, state)
@@ -330,6 +417,58 @@ class _FileAuditor:
                 + [self._taint(item.iter, state) for item in node.generators]
             )
         return _Taint()
+
+    def _taint_through_summary(
+        self,
+        combined: _Taint,
+        summary: FunctionSummary,
+        call: ast.Call,
+        state: Mapping[str, _Taint],
+    ) -> _Taint:
+        """Apply a callee summary at a call site (interprocedural taint).
+
+        Only parameters that taint the callee's return value propagate taint
+        to the call expression; callee-internal sink hits are reported as
+        call-site matches and never leak into the return value.  A callee
+        with a summary that ignores its argument (constant return) therefore
+        produces a clean result instead of the old conservative passthrough.
+        """
+        pairs = self._argument_pairs(summary, call)
+        origins: set[str] = set()
+        unsafe: set[str] = set()
+        trail: list[str] = []
+        for param, value in pairs:
+            arg_taint = self._taint(value, state)
+            if not arg_taint.origins:
+                continue
+            if summary.taints_return(param):
+                origins.update(arg_taint.origins)
+                unsafe.update(arg_taint.unsafe_for)
+                trail.extend(arg_taint.trail)
+                trail.append(f"call:{summary.name}->{param}->return")
+        if not origins:
+            return _Taint(clean_from=summary.name)
+        return _Taint(
+            origins=frozenset(origins),
+            trail=tuple(trail),
+            unsafe_for=frozenset(unsafe),
+        )
+
+    def _argument_pairs(
+        self,
+        summary: FunctionSummary,
+        call: ast.Call,
+    ) -> list[tuple[str, ast.expr]]:
+        pairs: list[tuple[str, ast.expr]] = []
+        for index, value in enumerate(call.args):
+            if index < len(summary.parameters):
+                pairs.append((summary.parameters[index], value))
+        pairs.extend(
+            (keyword.arg, keyword.value)
+            for keyword in call.keywords
+            if keyword.arg is not None
+        )
+        return pairs
 
     def _inspect_expression(
         self,
@@ -383,6 +522,54 @@ class _FileAuditor:
         if sink in _CODE_EXECUTION_SINKS:
             self._maybe_add(DYNAMIC_CODE_EXECUTION, call, first, sink, state, function_name)
 
+        summary = self._summaries.get(sink)
+        if summary is not None:
+            self._maybe_add_summary_match(call, summary, state, function_name)
+
+    def _maybe_add_summary_match(
+        self,
+        call: ast.Call,
+        summary: FunctionSummary,
+        state: Mapping[str, _Taint],
+        function_name: str | None,
+    ) -> None:
+        """Emit a match at a call site whose tainted argument reaches a sink
+        inside the callee (A -> B -> sink chains).
+
+        While collecting summaries the same path records the transitive
+        ``param -> (category, "callee->sink")`` flow so outer functions can
+        chain it (deploy -> run_build -> execute_shell -> subprocess.run).
+        """
+        for param, value in self._argument_pairs(summary, call):
+            arg_taint = self._taint(value, state)
+            if not arg_taint.origins:
+                continue
+            sanitized = set(summary.sanitized_params.get(param, []))
+            for category, callee_sink in summary.sinks_for(param):
+                if category in sanitized or not arg_taint.is_unsafe_for(category):
+                    continue
+                rule = _RULES_BY_CATEGORY.get(category)
+                if rule is None:
+                    continue
+                callee_short = summary.name.rsplit(".", 1)[-1]
+                parts = callee_sink.split("->")
+                chained_sink = "->".join(
+                    [callee_short]
+                    + [part.rsplit(".", 1)[-1] for part in parts[:-1]]
+                    + [parts[-1]]
+                )
+                if self._collecting_summary and self._summary_state is not None:
+                    for origin in arg_taint.origins:
+                        if not origin.startswith("param:"):
+                            continue
+                        current_param = origin.removeprefix("param:")
+                        entries = self._summary_state[0].setdefault(current_param, [])
+                        if (category, chained_sink) not in entries:
+                            entries.append((category, chained_sink))
+                else:
+                    self._add(rule, call, chained_sink, arg_taint, False, function_name)
+                break
+
     def _maybe_add(
         self,
         rule: AuditRule,
@@ -397,10 +584,36 @@ class _FileAuditor:
         if argument is None:
             return
         taint = self._taint(argument, state)
+        if self._collecting_summary and self._summary_state is not None:
+            self._record_summary_flow(rule, taint, sink)
+            return
         if taint.is_unsafe_for(rule.category):
             self._add(rule, call, sink, taint, False, function_name)
-        elif not tainted_only and not _is_literal(argument) and not taint.origins:
+        elif (
+            not tainted_only
+            and not _is_literal(argument)
+            and not taint.origins
+            and not taint.was_sanitized
+            and not taint.clean_from
+        ):
             self._add(rule, call, sink, taint, True, function_name)
+
+    def _record_summary_flow(self, rule: AuditRule, taint: _Taint, sink: str) -> None:
+        """Record parameter -> sink / sanitized flows while collecting summaries."""
+        param_to_sinks, _param_returns, sanitized = self._summary_state  # type: ignore[misc]
+        for origin in taint.origins:
+            if not origin.startswith("param:"):
+                continue
+            param = origin.removeprefix("param:")
+            if taint.is_unsafe_for(rule.category):
+                entries = param_to_sinks.setdefault(param, [])
+                entry = (rule.category, sink)
+                if entry not in entries:
+                    entries.append(entry)
+            else:
+                categories = sanitized.setdefault(param, [])
+                if rule.category not in categories:
+                    categories.append(rule.category)
 
     def _add(
         self,
@@ -480,6 +693,13 @@ class _FileAuditor:
             return current
         if isinstance(statement, ast.Return):
             self._inspect_expression(statement.value, current, function_name)
+            if self._collecting_summary and self._summary_state is not None and statement.value is not None:
+                return_taint = self._taint(statement.value, current)
+                self._summary_state[1].update(
+                    origin.removeprefix("param:")
+                    for origin in return_taint.origins
+                    if origin.startswith("param:")
+                )
             return current
         if isinstance(statement, ast.If):
             self._inspect_expression(statement.test, current, function_name)
@@ -567,7 +787,7 @@ class _FileAuditor:
     @staticmethod
     def _assign_target(target: ast.AST, taint: _Taint, state: dict[str, _Taint]) -> None:
         if isinstance(target, ast.Name):
-            if taint.origins:
+            if taint.origins or taint.was_sanitized or taint.clean_from:
                 state[target.id] = taint
             else:
                 state.pop(target.id, None)
@@ -744,7 +964,8 @@ class PythonSourceAuditor:
                 "column": match.column,
                 "dynamic_only": match.dynamic_only,
                 "limitations": [
-                    "intraprocedural best-effort taint analysis",
+                    "interprocedural taint via in-file function summaries",
+                    "cross-file summaries not yet resolved",
                     "candidate requires independent verification",
                 ],
             },
