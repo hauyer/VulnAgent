@@ -71,3 +71,13 @@ frontend/dist/
 third_party/
 artifacts/build_qjs.log
 
+
+samples/external_protection_v05/nsis_3_12/tool/
+samples/external_protection_v05/owasp_mas_crackmes/
+samples/external_protection_v05/_dl/
+samples/external_protection_v05/upx_5_2_0/tool/
+samples/external_protection_v05/upx_5_2_0/bin/
+samples/external_protection_v05/nsis_3_12/bin/
+samples/external_protection_v05/teaching_vm/bin/
+samples/external_protection_v05/string_obfuscation/bin/
+samples/external_protection_v05/quarkslab_obfuscation_dataset/

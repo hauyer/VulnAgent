@@ -88,89 +88,113 @@
       "pair_id": "upx-5.2.0-pe",
       "state": "plain",
       "path": "upx_5_2_0/bin/benign_cli_plain.exe",
-      "bytes": 53591,
-      "sha256": "f70fdedfa7f3ba549f01e115380a59db629d8367e3e0303f7d839180c82b8325",
+      "bytes": 212480,
+      "sha256": "f89b5d8d32de4fa3dc244a56abda1a80349dbc58a55d566193f8e09e89e401f1",
       "format": "PE",
       "architecture": "x86-64",
       "protection": "none",
-      "provenance": "Locally compiled from benign_cli.c with MinGW-w64 GCC"
+      "provenance": "Locally compiled from benign_cli.c with MinGW-w64 GCC",
+      "rebuild": "rebuilt 2026-09-25 (llvm-mingw clang 22 / official UPX 5.2.0 / official NSIS 3.12); SHA-256 updated for rebuilt artifacts"
     },
     {
       "sample_id": "upx520-benign-packed",
       "pair_id": "upx-5.2.0-pe",
       "state": "packed",
       "path": "upx_5_2_0/bin/benign_cli_upx_5.2.0.exe",
-      "bytes": 40791,
-      "sha256": "df5f4a204b03f7acaeacda3339e7c9e6427a2901715a9bb6c3cebeed256a28d5",
+      "bytes": 84992,
+      "sha256": "bd30a0e81d277625db5d7d103c665c0819b8340ea015c53fa73e6e701b0ee3e4",
       "format": "PE",
       "architecture": "x86-64",
       "protection": "UPX 5.2.0 -9",
-      "static_ground_truth": ["UPX0", "UPX1", "UPX2"],
-      "validation": "UPX 5.2.0 -t returned OK"
+      "static_ground_truth": [
+        "UPX0",
+        "UPX1",
+        "UPX2"
+      ],
+      "validation": "UPX 5.2.0 -t returned OK",
+      "rebuild": "rebuilt 2026-09-25 (llvm-mingw clang 22 / official UPX 5.2.0 / official NSIS 3.12); SHA-256 updated for rebuilt artifacts"
     },
     {
       "sample_id": "nsis312-benign-level2",
       "pair_id": "nsis-3.12-pe",
       "state": "protected_container",
       "path": "nsis_3_12/bin/benign_cli_nsis_3.12_setup.exe",
-      "bytes": 50316,
-      "sha256": "2db5a21f5ae1c724423c73d43aadf6182d92ece9e5f25beb6c2c09846ba18de5",
+      "bytes": 118790,
+      "sha256": "cef9ecd7df7477c4e204fb3efe8cff596ebe28a2e49b65116f9730d465a4d44d",
       "format": "PE",
       "architecture": "x86",
       "protection": "NSIS 3.12 solid LZMA installer/container",
-      "static_ground_truth": [".ndata", "Nullsoft", "NSIS Error"],
+      "static_ground_truth": [
+        ".ndata",
+        "Nullsoft",
+        "NSIS Error"
+      ],
       "validation": "VulnAgent static classifier selected NSIS level 2 with confidence 0.85; target_executed=false",
-      "note": "NSIS is a compressed installer/container, categorized as level 2 by the current project teaching matrix; this does not claim cryptographic encryption."
+      "note": "NSIS is a compressed installer/container, categorized as level 2 by the current project teaching matrix; this does not claim cryptographic encryption.",
+      "rebuild": "rebuilt 2026-09-25 (llvm-mingw clang 22 / official UPX 5.2.0 / official NSIS 3.12); SHA-256 updated for rebuilt artifacts"
     },
     {
       "sample_id": "teaching-vm-plain",
       "pair_id": "teaching-vm-pe",
       "state": "plain",
       "path": "teaching_vm/bin/teaching_vm_plain.exe",
-      "bytes": 54901,
-      "sha256": "5fffaef8a559630647024b98beadaf936b3d91778ff46f7d3f06a19f082c227c",
+      "bytes": 212480,
+      "sha256": "7579a634c84d4e82fbf3d69f99e224d5b003c73b867b505a54226ce28a1e87d0",
       "format": "PE",
       "architecture": "x86-64",
       "protection": "none",
-      "provenance": "Locally compiled from teaching_vm_fixture.c with MinGW-w64 GCC 15.2.0"
+      "provenance": "Locally compiled from teaching_vm_fixture.c with MinGW-w64 GCC 15.2.0",
+      "rebuild": "rebuilt 2026-09-25 (llvm-mingw clang 22 / official UPX 5.2.0 / official NSIS 3.12); SHA-256 updated for rebuilt artifacts"
     },
     {
       "sample_id": "teaching-vm-level3",
       "pair_id": "teaching-vm-pe",
       "state": "virtualized",
       "path": "teaching_vm/bin/teaching_vm_level3.exe",
-      "bytes": 58329,
-      "sha256": "1bcb126a47c29e562a37cc7177bc47be4640509d70e7d990a04a0b433ca6f030",
+      "bytes": 214528,
+      "sha256": "3f5edeeacd5bf9865e5f5fb34ad0248c31926397913e5db27b5756553d139f9e",
       "format": "PE",
       "architecture": "x86-64",
       "protection": "VulnAgent deterministic teaching VM",
-      "static_ground_truth": [".vcode", ".vmdata", "VulnAgent Teaching VM", "vm_dispatch"],
-      "validation": "VulnAgent static classifier selected Teaching VM level 3 with confidence 0.85; target_executed=false"
+      "static_ground_truth": [
+        ".vcode",
+        ".vmdata",
+        "VulnAgent Teaching VM",
+        "vm_dispatch"
+      ],
+      "validation": "VulnAgent static classifier selected Teaching VM level 3 with confidence 0.85; target_executed=false",
+      "rebuild": "rebuilt 2026-09-25 (llvm-mingw clang 22 / official UPX 5.2.0 / official NSIS 3.12); SHA-256 updated for rebuilt artifacts"
     },
     {
       "sample_id": "string-obfuscation-plain",
       "pair_id": "string-obfuscation-pe",
       "state": "plain",
       "path": "string_obfuscation/bin/string_plain.exe",
-      "bytes": 55269,
-      "sha256": "13d02e346cd722abfb10a1fc222c44740d942ce4e21899d99da0f395c1875bcf",
+      "bytes": 81408,
+      "sha256": "fe7feeb1ba3967df3cd2674dcd8421c7f749fccffdbae1003b287b1808974fe5",
       "format": "PE",
       "architecture": "x86-64",
       "protection": "none",
-      "provenance": "Locally compiled from string_fixture.c with MinGW-w64 GCC 15.2.0"
+      "provenance": "Locally compiled from string_fixture.c with MinGW-w64 GCC 15.2.0",
+      "rebuild": "rebuilt 2026-09-25 (llvm-mingw clang 22 / official UPX 5.2.0 / official NSIS 3.12); SHA-256 updated for rebuilt artifacts"
     },
     {
       "sample_id": "string-xor-base64-obfuscated",
       "pair_id": "string-obfuscation-pe",
       "state": "obfuscated",
       "path": "string_obfuscation/bin/string_xor_base64_obfuscated.exe",
-      "bytes": 55891,
-      "sha256": "e128cd5c3a11ca2914244e539b47e5ba5f57e36ef703eca27c2f1fb1de1eb6da",
+      "bytes": 81920,
+      "sha256": "0ea1b82e0b33552f31db141aef0b85d934dc60559277155463f6101b615008f0",
       "format": "PE",
       "architecture": "x86-64",
       "protection": "deterministic Base64 plus XOR string obfuscation fixture",
-      "static_ground_truth": [".obfstr", "base64", "xor key 0x5a"],
-      "validation": "StaticDeobfuscationEngine detected string_encryption and recovered the expected Base64 plaintext; target_executed=false"
+      "static_ground_truth": [
+        ".obfstr",
+        "base64",
+        "xor key 0x5a"
+      ],
+      "validation": "StaticDeobfuscationEngine detected string_encryption and recovered the expected Base64 plaintext; target_executed=false",
+      "rebuild": "rebuilt 2026-09-25 (llvm-mingw clang 22 / official UPX 5.2.0 / official NSIS 3.12); SHA-256 updated for rebuilt artifacts"
     },
     {
       "sample_id": "zlib-clang14-o0-plain",
@@ -253,7 +277,9 @@
       "sha256": "1da8bf57d266109f9a07c01bf7111a1975ce01f190b9d914bcd3ae3dbef96f21",
       "format": "APK/ZIP",
       "architecture": "Android DEX",
-      "static_ground_truth": ["classes.dex"],
+      "static_ground_truth": [
+        "classes.dex"
+      ],
       "protection": "OWASP mobile reverse-engineering teaching challenge",
       "note": "Not labeled as a commercial Android protector sample."
     },
@@ -266,7 +292,9 @@
       "sha256": "0e154f2acb99c88795849117ea178ad2d63cf1b608525b21973cd498e9a5d1a0",
       "format": "APK/ZIP",
       "architecture": "Android DEX with native components",
-      "static_ground_truth": ["classes.dex"],
+      "static_ground_truth": [
+        "classes.dex"
+      ],
       "protection": "OWASP mobile reverse-engineering teaching challenge",
       "note": "Not labeled as a commercial Android protector sample."
     }
@@ -300,9 +328,29 @@
       "fixture_id": "xollvm-llvm22-safe-four-pass",
       "path": "xollvm_llvm22/source_fixture/modern_obfuscation_fixture.c",
       "sha256": "4a60fbece7bb4b222ed619ceb6d6566b58bf16fccef0abe5ba0521360f63cebe",
-      "requested_passes": ["substitution", "bcf", "flattening", "strenc"],
-      "excluded_passes": ["vm", "anti-debug", "adec"],
+      "requested_passes": [
+        "substitution",
+        "bcf",
+        "flattening",
+        "strenc"
+      ],
+      "excluded_passes": [
+        "vm",
+        "anti-debug",
+        "adec"
+      ],
       "build_status": "source_only_not_executed"
     }
-  ]
+  ],
+  "rebuild_records": [
+    {
+      "date": "2026-09-25",
+      "toolchain": "llvm-mingw 20260616-msvcrt x86_64 clang (O0 -fno-builtin); official UPX 5.2.0 win64; official NSIS 3.12 portable",
+      "upx_archive_sha256": "b471ebf1b7f20f4a89150264ed9a008a2a5bfd247f3c6d1184a75bb59ca08f5d",
+      "nsis_archive_sha256": "56581f90db321581c5381193d796fffcf2d24b2f8fed2160a6c6a3baa67f2c4f",
+      "nsis_compiler_sha256": "b043e554afefbfc56315669d0b4779793aeae67f0f2a7a790e2ea91f05298eff",
+      "note": "UPX/NSIS/teaching-vm/string fixtures rebuilt locally; Quarkslab zlib subset and OWASP APKs extracted from pinned upstream archives with unchanged hashes"
+    }
+  ],
+  "updated_at": "2026-09-25"
 }

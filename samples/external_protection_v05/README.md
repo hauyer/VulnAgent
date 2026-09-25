@@ -1,6 +1,6 @@
 # VulnAgent V0.5 加壳与混淆实验样本包
 
-生成日期：2026-09-12
+生成日期：2026-09-12（本地构建样本于 **2026-09-25 重建**并更新哈希，见下方"重建记录"）
 
 本目录依据《VulnAgent V0.5 加壳与混淆还原技术升级方案》整理，目标是给静态识别、还原建议、前后差异验证和教学演示提供一组可追溯的良性样本。样本来自开源项目、官方教学题或本地编译的无害程序；这里没有收集真实恶意软件。
 
@@ -99,7 +99,9 @@ gcc -O0 -fno-builtin .\upx_5_2_0\source\benign_cli.c -o .\upx_5_2_0\bin\benign_c
 .\upx_5_2_0\tool\upx.exe -9 -q -o .\upx_5_2_0\bin\benign_cli_upx_5.2.0.exe .\upx_5_2_0\bin\benign_cli_plain.exe
 ```
 
-本次生成结果为 `53591 -> 40791` 字节，UPX 报告格式为 `win64/pe`、压缩率为 `76.12%`。静态节表从原始件的常规节变为 `UPX0, UPX1, UPX2`；`upx -t` 对受控加壳件返回 `[OK]`。随包的 `upx.exe` SHA-256 为 `f4c0cc7aca0f1ff0d0b750e966b44139f2fa1a2db7281f48fc52194400712e1d`。
+本次生成结果为 `212480 -> 84992` 字节，UPX 报告格式为 `win64/pe`、压缩率为 `40.00%`。静态节表从原始件的常规节变为 `UPX0, UPX1, UPX2`；`upx -t` 对受控加壳件返回 `[OK]`。随包的 `upx.exe` SHA-256 为 `f4c0cc7aca0f1ff0d0b750e966b44139f2fa1a2db7281f48fc52194400712e1d`。
+
+> **重建记录（2026-09-25）**：本包 15 个样本中，7 个 PE（UPX 对照组、NSIS 容器、教学 VM 对、字符串混淆对）已于 2026-09-25 用 llvm-mingw `x86_64-w64-mingw32-clang`（-O0 -fno-builtin）、官方 UPX 5.2.0 与官方 NSIS 3.12 portable 重建；8 个固定哈希样本（Quarkslab zlib 子集 5 个、OWASP crackmes 2 个、zlib-sources 1 个，共 10 个文件）从 manifest 记录的固定上游归档下载并解压，**哈希与上游完全一致**。所有样本的当前 SHA-256 见 `SHA256SUMS.txt` 与 `manifest.json`（含 `rebuild_records`）。`verify_static.ps1` 全量通过（15/15 OK）。
 
 ## NSIS 3.12 与三级教学 VM
 
