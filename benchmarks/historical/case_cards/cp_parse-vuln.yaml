@@ -1,0 +1,29 @@
+# Historical case card: cp_parse (CWE-121)
+# 教学复刻案例（非真实 CVE；无上游公告），用于机理分析演示。
+case_id: cp_parse-vuln
+cwe_id: CWE-121
+vulnerability_type: stack-buffer-overflow
+language: c
+title: 16-bit length prefix copied into a fixed 8-byte stack buffer
+source: VulnAgent self-authored teaching fixture
+pinned_revision: vuln.c@5f8d3cb
+fixed_revision: fix.c@5f8d3cb
+upstream_advisory: none (teaching fixture; fixed commit is the paired fix.c)
+entry_point: LLVMFuzzerTestOneInput
+call_chain:
+  - "LLVMFuzzerTestOneInput(data, size)"
+  - "  -> parse_message(data, size)   # len = data[0] | data[1]<<8"
+  - "     -> char out[8]"
+  - "        -> for i in 0..len-1: out[i] = data[2+i]   # unbounded write"
+dangerous_operation: unbounded stack write driven by attacker-controlled length
+trigger_condition: "len > 8 (e.g. len=9..65535) with any payload"
+harmless_repro: |-
+  python -m experiments.run_real_libfuzzer --runs 50000 --max-len 64 --seed 7
+  # crashes=1 sanitizer=stack-buffer-overflow replay_count=1 fixed_outcome=clean
+fixed_contrast: |-
+  fix.c rejects len > sizeof(out) before the loop; same crash input exits 0.
+verified: true
+authorization:
+  statement: local self-authored fixture; dynamic run in isolated sandbox
+  static_read: true
+  dynamic_run: true

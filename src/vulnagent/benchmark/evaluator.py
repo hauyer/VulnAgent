@@ -78,6 +78,9 @@ class BlindEvaluator:
             return 1.0
         if cand_file != gt_file:
             return 1.0
+        if gt_line == "0":
+            # Ground truth with unknown line: same file counts as a hit.
+            return 0.0
         delta = abs(int(cand_line) - int(gt_line))
         return min(delta / 10.0, 1.0)
 
@@ -91,6 +94,8 @@ class BlindEvaluator:
         records = self._load_ground_truth(gt_dir)
         candidates_by_case: dict[str, list[dict]] = {}
         for line in Path(candidates_path).read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
             row = json.loads(line)
             case_id = row.get("case_id")
             if not case_id:

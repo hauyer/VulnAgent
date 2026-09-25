@@ -1,0 +1,27 @@
+# Historical case card: py-sql-001 (CWE-89)
+# 教学复刻案例（非真实 CVE；无上游公告），用于机理分析演示。
+case_id: py-sql-001-vulnerable
+cwe_id: CWE-89
+vulnerability_type: sql-injection
+language: python
+title: f-string user input interpolated into an SQL statement
+source: VulnAgent self-authored teaching fixture
+pinned_revision: app.py@5f8d3cb
+fixed_revision: parameterized query (placeholder binding)
+upstream_advisory: none (teaching fixture)
+entry_point: find_user(connection)
+call_chain:
+  - "find_user(connection)"
+  - "  -> username = input('username: ')"
+  - "     -> connection.execute(f\"SELECT * FROM users WHERE name = '{username}'\")"
+dangerous_operation: attacker-controlled string embedded in SQL text
+trigger_condition: "username like \"' OR '1'='1\" alters the query semantics"
+harmless_repro: |-
+  python -m experiments.run_external_scanners
+  # py-sql-001-vulnerable: SQL-injection candidate reported by native rules
+fixed_contrast: parameterized placeholders keep data and code separate
+verified: true
+authorization:
+  statement: local self-authored fixture; static analysis only
+  static_read: true
+  dynamic_run: false

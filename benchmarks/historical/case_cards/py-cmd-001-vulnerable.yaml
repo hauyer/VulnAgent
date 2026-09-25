@@ -1,0 +1,29 @@
+# Historical case card: py-cmd-001 (CWE-78)
+# 教学复刻案例（非真实 CVE；无上游公告），用于机理分析演示。
+case_id: py-cmd-001-vulnerable
+cwe_id: CWE-78
+vulnerability_type: command-injection
+language: python
+title: user-controlled string concatenated into a shell command
+source: VulnAgent self-authored teaching fixture
+pinned_revision: app.py@5f8d3cb
+fixed_revision: py-cmd-002-clean (list-arg subprocess, shell=False)
+upstream_advisory: none (teaching fixture)
+entry_point: run_user_command()
+call_chain:
+  - "run_user_command()"
+  - "  -> command = input('command: ')"
+  - "     -> subprocess.run(command, shell=True, text=True)"
+dangerous_operation: shell=True with unsanitized user input
+trigger_condition: "command like '; id' executes attacker-controlled shell code"
+harmless_repro: |-
+  python -m experiments.run_external_scanners
+  # py-cmd-001-vulnerable: fused CANDIDATE from native+semgrep+bandit
+fixed_contrast: |-
+  py-cmd-002-clean passes an argument list with shell=False; Bandit B6xx
+  generic subprocess warnings remain (measured as FP in the blind evaluation).
+verified: true
+authorization:
+  statement: local self-authored fixture; static analysis only
+  static_read: true
+  dynamic_run: false

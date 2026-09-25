@@ -4,6 +4,39 @@ VulnAgent 是一个 Evidence First 的多智能体软件漏洞分析课程项目
 在冻结 V0.1 公共协议和 V0.2 Agent Runtime 的基础上，打通真实 Python
 源码分析、独立验证、结构化报告、FastAPI 与 React 展示链路。
 
+## 课程设计交付总览（WP0–WP8）
+
+网络空间安全课程设计已按开发指导书完成 8 个工作包（门禁
+`python -m pytest -q` 全量通过）：
+
+| WP | 交付 |
+|---|---|
+| WP0 | 准入基线 + 四维授权 intake（static_read/dynamic_run 等）+ 目录结构 |
+| WP2 | 静态多源归一化：Semgrep/Bandit 与自研 native 统一为 VulnerabilityCandidate |
+| WP3 | 证据缺口驱动 Planner + Supervisor 结构化路由与确定性回退 |
+| WP4 | 真实 libFuzzer/ASan 动态闭环：crash → 重放 → 修复对照（8.4 全字段） |
+| WP5 | 盲评基准：标签隔离、泄漏守卫、独立 BlindEvaluator（TP/FP/FN/P/R） |
+| WP6 | 未知目标探索 + 脱敏卷宗 + 披露状态机（未提交声明） |
+| WP7 | UI/展示：React Dashboard/TaskDetail/Experiments + 只读研究 API + 演示路线 |
+| WP8 | 收尾：3 机理分析案例卡 + 5 臂引擎组合消融与误报归因 + 最终文档包 |
+
+**快速入口**
+
+```bash
+# 全量门禁
+python -m pytest -q
+# 服务（dist 已构建并由 FastAPI 挂载）
+.\venv\Scripts\python.exe -m uvicorn vulnagent.api.app:app --port 8000
+# 现场演示路线：docs/06_presentation/demo_routes.md
+# 机理分析：docs/06_presentation/case_studies.md
+# 消融复现：python -m experiments.run_engine_ablation
+# 动态复现：python -m experiments.run_real_libfuzzer --runs 50000 --max-len 64 --seed 7
+```
+
+> 诚实边界：盲评基准为自定义协议与自研教学样本（非 ExploitGym 官方分数）；
+> 动态与静态样本均为自研授权 fixture；WP8 消融的 Bandit 误报（P 1.0→0.625）
+> 是真实测量并保留在分母中。
+
 ## Architecture
 
 ```text

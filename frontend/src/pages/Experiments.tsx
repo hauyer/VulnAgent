@@ -6,6 +6,7 @@ const EXPERIMENT_LABELS: Record<string, string> = {
   "wp4-libfuzzer": "WP4 真实 libFuzzer/ASan 动态闭环",
   "wp5-blind-eval": "WP5 盲评基准",
   "wp6-exploration": "WP6 未知目标探索",
+  "wp8-ablation": "WP8 引擎组合消融与误报分析",
 };
 
 export default function Experiments() {
