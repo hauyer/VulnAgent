@@ -62,3 +62,7 @@ _cmp/
 
 # WP6 exploratory dossiers
 artifacts/dossiers/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/

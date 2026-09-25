@@ -1,0 +1,6 @@
+@import "tailwindcss";
+
+body {
+  font-family: ui-sans-serif, system-ui, "Segoe UI", "Microsoft YaHei", sans-serif;
+  background: #f8fafc;
+}
