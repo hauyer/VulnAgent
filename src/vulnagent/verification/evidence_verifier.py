@@ -21,6 +21,12 @@ why a candidate was confirmed, rejected, or left uncertain:
 * Candidates without evidence or with broken required fields are ``REJECTED``
   with the reason preserved (never silently dropped).
 
+V0.5 (Evidence Provenance): "distinct probative evidence kinds" is resolved
+through independence groups.  Evidence carrying a ``provenance.independence_group``
+counts once per group (three pieces from native-taint = one source); legacy
+evidence without provenance falls back to its type, preserving the old
+behaviour exactly.
+
 Only this boundary may emit ``CONFIRMED`` / ``REJECTED`` / ``UNCERTAIN``.
 """
 
@@ -34,6 +40,7 @@ from vulnagent.contracts import (
     VulnerabilityCandidate,
     VulnerabilityStatus,
 )
+from vulnagent.verification.independence import EvidenceIndependenceEvaluator
 
 # Evidence kinds that alone prove a reachable runtime fault.
 _STRONG_RUNTIME = frozenset(
@@ -82,7 +89,7 @@ MIN_RUNTIME_RELIABILITY = 0.5
 
 _REQUIRED_CANDIDATE_FIELDS = ("title", "description", "source_agent")
 
-_RULE_VERSION = "0.3.1"
+_RULE_VERSION = "0.4.0"
 
 
 def _location_supported(candidate: VulnerabilityCandidate) -> bool:
@@ -117,6 +124,9 @@ def _referenced_evidence(
 
 class EvidenceVerifier:
     """Evidence-driven verifier implementing the ``VulnerabilityVerifier`` port."""
+
+    def __init__(self) -> None:
+        self._independence = EvidenceIndependenceEvaluator()
 
     async def verify(
         self,
@@ -189,10 +199,18 @@ class EvidenceVerifier:
                 evidence_ids=evidence_ids,
                 counts=counts,
                 unresolved=unresolved,
-                extra={"stage": "runtime_proof", "participating_types": _unique_types(runtime_proof)},
+                extra={
+                    "stage": "runtime_proof",
+                    "participating_types": _unique_types(runtime_proof),
+                    "independent_sources": self._independence.independent_sources(runtime_proof),
+                },
             )
 
         # 3. Probative static signals (each must clear the probative threshold).
+        #    V0.5: corroboration is counted by *independent sources*.  Evidence
+        #    from the same independence group counts once, no matter how many
+        #    evidence types one analyzer split it into.  Legacy evidence without
+        #    provenance falls back to its type (old behaviour).
         probative = [
             item
             for item in resolved
@@ -200,9 +218,11 @@ class EvidenceVerifier:
             and item.reliability >= MIN_PROBATIVE_RELIABILITY
         ]
         probative_kinds = _unique_types(probative)
+        independent_groups = self._independence.independent_sources(probative)
+        independent_count = len(independent_groups)
         location_ok = _location_supported(candidate)
 
-        if len(probative_kinds) >= 2 and location_ok:
+        if independent_count >= 2 and location_ok:
             return self._result(
                 candidate,
                 status=VulnerabilityStatus.CONFIRMED,
@@ -212,7 +232,8 @@ class EvidenceVerifier:
                 ),
                 rationale=(
                     "Independent static corroboration: multiple probative evidence "
-                    f"kinds ({', '.join(sorted(probative_kinds))}) at/above the "
+                    f"kinds ({', '.join(sorted(probative_kinds))}) from "
+                    f"{independent_count} independent analysis sources at/above the "
                     "reliability threshold agree on a usable candidate location."
                 ),
                 evidence_ids=evidence_ids,
@@ -221,12 +242,14 @@ class EvidenceVerifier:
                 extra={
                     "stage": "static_corroboration",
                     "participating_types": probative_kinds,
+                    "independent_sources": independent_groups,
+                    "independent_count": independent_count,
                 },
             )
 
-        if len(probative_kinds) >= 1:
+        if independent_count >= 1:
             reason = (
-                "Single probative evidence kind "
+                "Single independent probative source "
                 f"({', '.join(sorted(probative_kinds))}); candidate is plausible "
                 "but under-proven without a second independent signal or runtime "
                 "reproduction."
@@ -247,6 +270,8 @@ class EvidenceVerifier:
                 extra={
                     "stage": "under_proven",
                     "participating_types": probative_kinds,
+                    "independent_sources": independent_groups,
+                    "independent_count": independent_count,
                 },
             )
 
