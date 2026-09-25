@@ -170,6 +170,8 @@ def test_mock_application_registers_expected_capabilities() -> None:
     assert services.tool_registry.names() == [
         CapabilityName.SOURCE_PARSE.value,
         CapabilityName.SOURCE_AUDIT.value,
+        CapabilityName.SOURCE_SCAN_SEMGREP.value,
+        CapabilityName.SOURCE_SCAN_BANDIT.value,
         CapabilityName.BINARY_INSPECT.value,
         CapabilityName.BINARY_LOGIC.value,
         CapabilityName.BINARY_OBFUSCATION.value,

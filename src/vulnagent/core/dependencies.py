@@ -55,6 +55,12 @@ class CapabilityBundle:
     code_deobfuscator: Any | None = None
     code_audit_enabled: bool = False
 
+    # V0.6 external scanner adapters (WP2). Optional so the frozen mock bundle
+    # stays unchanged; when None the composition root still registers real
+    # fail-safe adapters so the registry always exposes the full capability set.
+    semgrep_adapter: Any | None = None
+    bandit_adapter: Any | None = None
+
     def __post_init__(self) -> None:
         """Fail fast when an injected capability is structurally invalid.
 

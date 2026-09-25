@@ -1,0 +1,5 @@
+# Keep private labels out of source control; only docs/template are tracked.
+*
+!.gitignore
+!README.md
+!ground_truth.TEMPLATE.json

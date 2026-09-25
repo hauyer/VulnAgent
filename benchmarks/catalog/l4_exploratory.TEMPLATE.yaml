@@ -1,0 +1,35 @@
+# TEMPLATE FILE — copy, fill with real values, then drop "TEMPLATE" from the name.
+# L4 exploratory layer: unlabeled, authorized unknown targets.
+schema_version: 1
+suite_id: l4-exploratory-<project>
+dataset: l4_exploratory
+description: >-
+  Unlabeled, authorized open-source versions used to attempt finding new
+  candidates. Select by active maintenance, buildability, clear input
+  surface, modest size and research permission. There is no preset positive
+  case; "no finding" must not be counted as a true negative.
+pinned_revision: <immutable-commit>
+samples:
+  - sample_id: explore-<project>-001
+    family_id: null
+    dataset: l4_exploratory
+    source_name: <project>
+    role: exploratory
+    target_kind: project
+    language: c
+    upstream_uri: <https-upstream-repository>
+    revision: <immutable-commit>
+    fixed_revision: null
+    target_path: <relative/pinned/target>
+    target_sha256: <64-lowercase-hex>
+    license_record: <upstream-license>
+    authorization:
+      statement: authorized local research; see upstream security policy
+      static_read: true
+      file_transform: true
+      dynamic_run: false        # enable only with isolation and consent
+      data_export: false
+    ground_truth_ref: null      # no preset label
+    build_profile: linux_clang_asan
+    time_budget_seconds: 300
+    memory_budget_mb: 2048

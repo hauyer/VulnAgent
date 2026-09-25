@@ -1,0 +1,36 @@
+# TEMPLATE FILE — copy, fill with real values, then drop "TEMPLATE" from the name.
+# L3 held-out layer: different project/family, frozen before scanning.
+schema_version: 1
+suite_id: l3-held-out-<family>
+dataset: l3_held_out
+description: >-
+  Blind samples from projects/families that differ from the development set.
+  Freeze the list in advance; developers must not read the labels. Adjacent
+  versions of one project must never be split across dev and held-out.
+pinned_revision: <immutable-commit>
+samples:
+  - sample_id: heldout-<family>-001
+    family_id: <family>
+    dataset: l3_held_out
+    source_name: <project-not-used-in-dev>
+    role: held_out
+    target_kind: project
+    language: c
+    upstream_uri: <https-upstream-repository>
+    revision: <immutable-commit>
+    fixed_revision: <immutable-fixed-commit-or-null>
+    target_path: <relative/pinned/target>
+    target_sha256: <64-lowercase-hex>
+    license_record: <upstream-license>
+    authorization:
+      statement: local open-source research; blind evaluation
+      static_read: true
+      file_transform: true
+      dynamic_run: false
+      data_export: false
+    # The label file is held privately by the evaluation owner and is the
+    # ONLY place that names the vulnerability, patch or trigger input.
+    ground_truth_ref: labels/l3-heldout-<family>-001
+    build_profile: linux_clang_asan
+    time_budget_seconds: 300
+    memory_budget_mb: 2048

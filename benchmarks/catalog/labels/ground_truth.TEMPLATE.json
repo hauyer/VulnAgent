@@ -1,0 +1,20 @@
+{
+  "ground_truth_ref": "labels/<sample-label-id>",
+  "sample_id": "<sample_id>",
+  "label": "vulnerable",
+  "cwe": ["CWE-XXX"],
+  "expected_findings": ["<finding-kind>"],
+  "location": {
+    "file_path": "<relative/file>",
+    "function_name": "<fn>",
+    "line_start": 0,
+    "line_end": 0
+  },
+  "entry_points": ["<public input entry>"],
+  "key_operations": ["<critical operation along the path>"],
+  "trigger_input_ref": "private/<trigger-input-or-null>",
+  "fixed_revision": "<immutable-fixed-commit-or-null>",
+  "sealed_by": "<evaluation-owner>",
+  "sealed_at": "<ISO-timestamp>",
+  "notes": "private - never exposed to the discovery agent"
+}

@@ -1,0 +1,35 @@
+# TEMPLATE FILE — copy, fill with real values, then drop "TEMPLATE" from the name.
+# L2 historical real-project layer: VulnGym curated entries / CVEfixes commits.
+schema_version: 1
+suite_id: l2-<project>-<case>
+dataset: l2_historical
+description: >-
+  Fixed historical open-source commits used for project-level localization
+  and cross-file reasoning. Start with 2-3 locally buildable projects; keep
+  the vulnerable and fixed revisions as a pair. Every entry must be manually
+  verified for version, patch and reproducibility.
+pinned_revision: <immutable-vulnerable-commit>
+samples:
+  - sample_id: <project>-case-001
+    family_id: <parser-boundary>
+    dataset: l2_historical
+    source_name: <project>
+    role: validation            # small historical set used for tuning
+    target_kind: project
+    language: c
+    upstream_uri: <https-upstream-repository>
+    revision: <immutable-vulnerable-commit>
+    fixed_revision: <immutable-fixed-commit-or-null>
+    target_path: <relative/pinned/vulnerable/checkout>
+    target_sha256: <64-lowercase-hex>
+    license_record: <upstream-license>
+    authorization:
+      statement: local open-source research on a pinned historical revision
+      static_read: true
+      file_transform: true
+      dynamic_run: false        # set true only with isolation + consent
+      data_export: false
+    ground_truth_ref: labels/<private-label-id>
+    build_profile: linux_clang_asan
+    time_budget_seconds: 300
+    memory_budget_mb: 2048

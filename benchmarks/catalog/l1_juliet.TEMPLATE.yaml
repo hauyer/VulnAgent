@@ -1,0 +1,53 @@
+# TEMPLATE FILE — copy, fill with real values, then drop "TEMPLATE" from the name.
+# L1 standard test layer: NIST SARD / Juliet vulnerable/clean pairs.
+schema_version: 1
+suite_id: l1-juliet-<cwe-id>
+dataset: l1_standard
+description: >-
+  Pinned NIST SARD/Juliet subset for rule coverage, localization and
+  false-positive regression. Select 3-5 CWEs with a vulnerable and a safe
+  pair each; pin the downloaded suite version. Synthetic scores must not be
+  presented as real-project performance.
+pinned_revision: <immutable-suite-version-or-commit>
+samples:
+  - sample_id: juliet-cwe121-bad-001
+    family_id: cwe121-stack-overflow
+    dataset: l1_standard
+    source_name: NIST SARD Juliet
+    role: train                 # labels visible for the dev layer
+    target_kind: source
+    language: c
+    upstream_uri: https://samate.nist.gov/SARD/test-suites
+    revision: <immutable-suite-version>
+    target_path: <relative/pinned/target>
+    target_sha256: <64-lowercase-hex>
+    license_record: <record-the-SARD-license>
+    authorization:
+      statement: local copy of permitted SARD subset; static analysis only
+      static_read: true
+      file_transform: false
+      dynamic_run: false
+      data_export: false
+    ground_truth_ref: labels/l1-juliet-cwe121-bad-001
+    build_profile: null
+    time_budget_seconds: 300
+    memory_budget_mb: 2048
+  - sample_id: juliet-cwe121-good-001
+    family_id: cwe121-stack-overflow
+    dataset: l1_standard
+    source_name: NIST SARD Juliet
+    role: train
+    target_kind: source
+    language: c
+    upstream_uri: https://samate.nist.gov/SARD/test-suites
+    revision: <immutable-suite-version>
+    target_path: <relative/pinned/safe-target>
+    target_sha256: <64-lowercase-hex>
+    license_record: <record-the-SARD-license>
+    authorization:
+      statement: local copy of permitted SARD subset; static analysis only
+      static_read: true
+      dynamic_run: false
+    ground_truth_ref: labels/l1-juliet-cwe121-good-001
+    time_budget_seconds: 300
+    memory_budget_mb: 2048

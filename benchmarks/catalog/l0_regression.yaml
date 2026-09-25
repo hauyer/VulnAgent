@@ -1,0 +1,387 @@
+schema_version: 1
+suite_id: l0-regression
+dataset: l0_regression
+description: 'Pinned L0 regression catalog: self-authored vulnerable/clean Python
+  fixtures used for fast regression and demos, not for claims about generalization.'
+pinned_revision: 4a6a2b7529e7
+samples:
+- sample_id: py-cmd-001-vulnerable
+  family_id: source-cmd-basic
+  dataset: l0_regression
+  source_name: VulnAgent self-authored teaching fixture
+  role: train
+  target_kind: source
+  language: python
+  revision: 4a6a2b7529e7
+  target_path: benchmarks/source/py-cmd-001-vulnerable
+  target_sha256: 25c6244894f9593e6804760a8f7ec446e9f17fcbf419dfa17369533d143a6f35
+  license_record: Project educational use
+  authorization:
+    statement: local self-authored fixture; static analysis only
+    static_read: true
+    file_transform: false
+    dynamic_run: false
+    data_export: false
+  time_budget_seconds: 300
+  memory_budget_mb: 2048
+- sample_id: py-cmd-002-clean
+  family_id: source-cmd-basic
+  dataset: l0_regression
+  source_name: VulnAgent self-authored teaching fixture
+  role: train
+  target_kind: source
+  language: python
+  revision: 4a6a2b7529e7
+  target_path: benchmarks/source/py-cmd-002-clean
+  target_sha256: 551b69966b104b12890bd710f111c42ab7efd11497f3b8fcab402217cb4e3cce
+  license_record: Project educational use
+  authorization:
+    statement: local self-authored fixture; static analysis only
+    static_read: true
+    file_transform: false
+    dynamic_run: false
+    data_export: false
+  time_budget_seconds: 300
+  memory_budget_mb: 2048
+- sample_id: py-sql-001-vulnerable
+  family_id: source-sql-basic
+  dataset: l0_regression
+  source_name: VulnAgent self-authored teaching fixture
+  role: train
+  target_kind: source
+  language: python
+  revision: 4a6a2b7529e7
+  target_path: benchmarks/source/py-sql-001-vulnerable
+  target_sha256: d03c79e5bf9cb6d6fe020d730aee02f22083a2652a0733eddb8fc3ba3f42c68d
+  license_record: Project educational use
+  authorization:
+    statement: local self-authored fixture; static analysis only
+    static_read: true
+    file_transform: false
+    dynamic_run: false
+    data_export: false
+  time_budget_seconds: 300
+  memory_budget_mb: 2048
+- sample_id: py-sql-002-clean
+  family_id: source-sql-basic
+  dataset: l0_regression
+  source_name: VulnAgent self-authored teaching fixture
+  role: train
+  target_kind: source
+  language: python
+  revision: 4a6a2b7529e7
+  target_path: benchmarks/source/py-sql-002-clean
+  target_sha256: 77947ae38c478bf8bf4d23d8f5c35c403cb3a121dc853f5bdea1a2b1f21de2d0
+  license_record: Project educational use
+  authorization:
+    statement: local self-authored fixture; static analysis only
+    static_read: true
+    file_transform: false
+    dynamic_run: false
+    data_export: false
+  time_budget_seconds: 300
+  memory_budget_mb: 2048
+- sample_id: py-path-001-vulnerable
+  family_id: source-path-basic
+  dataset: l0_regression
+  source_name: VulnAgent self-authored teaching fixture
+  role: train
+  target_kind: source
+  language: python
+  revision: 4a6a2b7529e7
+  target_path: benchmarks/source/py-path-001-vulnerable
+  target_sha256: 19751d88a1db6c8fcb93290af441314b56213a1521fd58998c186fb3f995c07b
+  license_record: Project educational use
+  authorization:
+    statement: local self-authored fixture; static analysis only
+    static_read: true
+    file_transform: false
+    dynamic_run: false
+    data_export: false
+  time_budget_seconds: 300
+  memory_budget_mb: 2048
+- sample_id: py-path-002-clean
+  family_id: source-path-basic
+  dataset: l0_regression
+  source_name: VulnAgent self-authored teaching fixture
+  role: train
+  target_kind: source
+  language: python
+  revision: 4a6a2b7529e7
+  target_path: benchmarks/source/py-path-002-clean
+  target_sha256: ecd4a697cdd85c54f7e9dd69d8c1cf6b8d9da1a1a27e11dd7a56df2fe6b3f923
+  license_record: Project educational use
+  authorization:
+    statement: local self-authored fixture; static analysis only
+    static_read: true
+    file_transform: false
+    dynamic_run: false
+    data_export: false
+  time_budget_seconds: 300
+  memory_budget_mb: 2048
+- sample_id: py-deser-001-vulnerable
+  family_id: source-deserialization-basic
+  dataset: l0_regression
+  source_name: VulnAgent self-authored teaching fixture
+  role: train
+  target_kind: source
+  language: python
+  revision: 4a6a2b7529e7
+  target_path: benchmarks/source/py-deser-001-vulnerable
+  target_sha256: a5b2df94a845ef79935ef160cf1cf5ac6e8373bcd339364a2a5d963afe5b3e0a
+  license_record: Project educational use
+  authorization:
+    statement: local self-authored fixture; static analysis only
+    static_read: true
+    file_transform: false
+    dynamic_run: false
+    data_export: false
+  time_budget_seconds: 300
+  memory_budget_mb: 2048
+- sample_id: py-deser-002-clean
+  family_id: source-deserialization-basic
+  dataset: l0_regression
+  source_name: VulnAgent self-authored teaching fixture
+  role: train
+  target_kind: source
+  language: python
+  revision: 4a6a2b7529e7
+  target_path: benchmarks/source/py-deser-002-clean
+  target_sha256: 66b8db649679796acc86270ad373dbc3c77dd4acf08d2dbded7f102a691f2b6a
+  license_record: Project educational use
+  authorization:
+    statement: local self-authored fixture; static analysis only
+    static_read: true
+    file_transform: false
+    dynamic_run: false
+    data_export: false
+  time_budget_seconds: 300
+  memory_budget_mb: 2048
+- sample_id: py-eval-001-vulnerable
+  family_id: source-eval-basic
+  dataset: l0_regression
+  source_name: VulnAgent self-authored teaching fixture
+  role: train
+  target_kind: source
+  language: python
+  revision: 4a6a2b7529e7
+  target_path: benchmarks/source/py-eval-001-vulnerable
+  target_sha256: 8e4894ed16c463d6a1d3da7c899820c492c2f11c7e9a0f8e61ca4b215f25b9f7
+  license_record: Project educational use
+  authorization:
+    statement: local self-authored fixture; static analysis only
+    static_read: true
+    file_transform: false
+    dynamic_run: false
+    data_export: false
+  time_budget_seconds: 300
+  memory_budget_mb: 2048
+- sample_id: py-eval-002-clean
+  family_id: source-eval-basic
+  dataset: l0_regression
+  source_name: VulnAgent self-authored teaching fixture
+  role: train
+  target_kind: source
+  language: python
+  revision: 4a6a2b7529e7
+  target_path: benchmarks/source/py-eval-002-clean
+  target_sha256: f1fc1a4489e68c9b9c6335de467ecb8fd0b8296356d4b24c77c196d7d0c29752
+  license_record: Project educational use
+  authorization:
+    statement: local self-authored fixture; static analysis only
+    static_read: true
+    file_transform: false
+    dynamic_run: false
+    data_export: false
+  time_budget_seconds: 300
+  memory_budget_mb: 2048
+- sample_id: py-yaml-001-vulnerable
+  family_id: source-yaml-basic
+  dataset: l0_regression
+  source_name: VulnAgent self-authored teaching fixture
+  role: train
+  target_kind: source
+  language: python
+  revision: 4a6a2b7529e7
+  target_path: benchmarks/source/py-yaml-001-vulnerable
+  target_sha256: a9fe64bc04ccf15c1d152677645f337a8ac61953fa8f174d77f7fd30dba5138e
+  license_record: Project educational use
+  authorization:
+    statement: local self-authored fixture; static analysis only
+    static_read: true
+    file_transform: false
+    dynamic_run: false
+    data_export: false
+  time_budget_seconds: 300
+  memory_budget_mb: 2048
+- sample_id: py-yaml-002-clean
+  family_id: source-yaml-basic
+  dataset: l0_regression
+  source_name: VulnAgent self-authored teaching fixture
+  role: train
+  target_kind: source
+  language: python
+  revision: 4a6a2b7529e7
+  target_path: benchmarks/source/py-yaml-002-clean
+  target_sha256: bfdb5be7ea043e9ccedf81ac954584ff548dbe83e4f8e77c9df0878c7d8aa5ca
+  license_record: Project educational use
+  authorization:
+    statement: local self-authored fixture; static analysis only
+    static_read: true
+    file_transform: false
+    dynamic_run: false
+    data_export: false
+  time_budget_seconds: 300
+  memory_budget_mb: 2048
+- sample_id: py-cmd-003-vulnerable
+  family_id: source-cmd-alias
+  dataset: l0_regression
+  source_name: VulnAgent self-authored teaching fixture
+  role: train
+  target_kind: source
+  language: python
+  revision: 4a6a2b7529e7
+  target_path: benchmarks/source/py-cmd-003-vulnerable
+  target_sha256: 5e8e231efb0717e473da71b33e4aa70bc20f2b8f3e362738138e7765dc83e57e
+  license_record: Project educational use
+  authorization:
+    statement: local self-authored fixture; static analysis only
+    static_read: true
+    file_transform: false
+    dynamic_run: false
+    data_export: false
+  time_budget_seconds: 300
+  memory_budget_mb: 2048
+- sample_id: py-cmd-004-clean
+  family_id: source-cmd-alias
+  dataset: l0_regression
+  source_name: VulnAgent self-authored teaching fixture
+  role: train
+  target_kind: source
+  language: python
+  revision: 4a6a2b7529e7
+  target_path: benchmarks/source/py-cmd-004-clean
+  target_sha256: e9cbe3e8cb23485de7e011d1af374c8fc569a2eefc0fc0b803fdadf07bd37d28
+  license_record: Project educational use
+  authorization:
+    statement: local self-authored fixture; static analysis only
+    static_read: true
+    file_transform: false
+    dynamic_run: false
+    data_export: false
+  time_budget_seconds: 300
+  memory_budget_mb: 2048
+- sample_id: py-sql-003-vulnerable
+  family_id: source-sql-helper
+  dataset: l0_regression
+  source_name: VulnAgent self-authored teaching fixture
+  role: train
+  target_kind: source
+  language: python
+  revision: 4a6a2b7529e7
+  target_path: benchmarks/source/py-sql-003-vulnerable
+  target_sha256: cc2985da75f5fd207a489960a4e7a69413902fa626a6eb0fbe559929083c3ff3
+  license_record: Project educational use
+  authorization:
+    statement: local self-authored fixture; static analysis only
+    static_read: true
+    file_transform: false
+    dynamic_run: false
+    data_export: false
+  time_budget_seconds: 300
+  memory_budget_mb: 2048
+- sample_id: py-sql-004-clean
+  family_id: source-sql-helper
+  dataset: l0_regression
+  source_name: VulnAgent self-authored teaching fixture
+  role: train
+  target_kind: source
+  language: python
+  revision: 4a6a2b7529e7
+  target_path: benchmarks/source/py-sql-004-clean
+  target_sha256: 8f8b346c193353c8e4e249aadb3d794faed4283575e247f243d47d756c1064d4
+  license_record: Project educational use
+  authorization:
+    statement: local self-authored fixture; static analysis only
+    static_read: true
+    file_transform: false
+    dynamic_run: false
+    data_export: false
+  time_budget_seconds: 300
+  memory_budget_mb: 2048
+- sample_id: py-path-003-vulnerable
+  family_id: source-path-sanitizer
+  dataset: l0_regression
+  source_name: VulnAgent self-authored teaching fixture
+  role: train
+  target_kind: source
+  language: python
+  revision: 4a6a2b7529e7
+  target_path: benchmarks/source/py-path-003-vulnerable
+  target_sha256: b8f2196c9ceadd29f16d50af8e852dabb7f09be6b5703507ae3a293bdc518f71
+  license_record: Project educational use
+  authorization:
+    statement: local self-authored fixture; static analysis only
+    static_read: true
+    file_transform: false
+    dynamic_run: false
+    data_export: false
+  time_budget_seconds: 300
+  memory_budget_mb: 2048
+- sample_id: py-path-004-clean
+  family_id: source-path-sanitizer
+  dataset: l0_regression
+  source_name: VulnAgent self-authored teaching fixture
+  role: train
+  target_kind: source
+  language: python
+  revision: 4a6a2b7529e7
+  target_path: benchmarks/source/py-path-004-clean
+  target_sha256: 148e5827cbdc6e1c4e92b313bc3184a23da177369c896f7a622344bfa72cb024
+  license_record: Project educational use
+  authorization:
+    statement: local self-authored fixture; static analysis only
+    static_read: true
+    file_transform: false
+    dynamic_run: false
+    data_export: false
+  time_budget_seconds: 300
+  memory_budget_mb: 2048
+- sample_id: py-eval-003-vulnerable
+  family_id: source-eval-alias
+  dataset: l0_regression
+  source_name: VulnAgent self-authored teaching fixture
+  role: train
+  target_kind: source
+  language: python
+  revision: 4a6a2b7529e7
+  target_path: benchmarks/source/py-eval-003-vulnerable
+  target_sha256: f631c6b0c17cee7d25f0ffb8b2dd967c390fe8336c39a699fdb5ead995c644eb
+  license_record: Project educational use
+  authorization:
+    statement: local self-authored fixture; static analysis only
+    static_read: true
+    file_transform: false
+    dynamic_run: false
+    data_export: false
+  time_budget_seconds: 300
+  memory_budget_mb: 2048
+- sample_id: py-eval-004-clean
+  family_id: source-eval-alias
+  dataset: l0_regression
+  source_name: VulnAgent self-authored teaching fixture
+  role: train
+  target_kind: source
+  language: python
+  revision: 4a6a2b7529e7
+  target_path: benchmarks/source/py-eval-004-clean
+  target_sha256: 989f0c361ca35ec24e8812f3886b2800204bc619a8d03f41caa7f8617068977e
+  license_record: Project educational use
+  authorization:
+    statement: local self-authored fixture; static analysis only
+    static_read: true
+    file_transform: false
+    dynamic_run: false
+    data_export: false
+  time_budget_seconds: 300
+  memory_budget_mb: 2048

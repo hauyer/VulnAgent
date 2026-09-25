@@ -20,6 +20,8 @@ class CapabilityName(StrEnum):
 
     SOURCE_PARSE = "source.parse"
     SOURCE_AUDIT = "source.audit"
+    SOURCE_SCAN_SEMGREP = "source.scan.semgrep"
+    SOURCE_SCAN_BANDIT = "source.scan.bandit"
 
     BINARY_INSPECT = "binary.inspect"
     BINARY_LOGIC = "binary.logic"
