@@ -1,0 +1,7 @@
+rules:
+  - id: vulnagent-cmd-shell
+    languages: [python]
+    message: shell=True command execution
+    severity: WARNING
+    metadata: {cwe: [CWE-78], vuln_sink: subprocess.run}
+    pattern: subprocess.run($X, shell=True, ...)
