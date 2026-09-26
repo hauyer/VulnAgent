@@ -5,8 +5,9 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
+from vulnagent.agents.base import BaseAgent
 from vulnagent.agents.base import BaseAgent
 from vulnagent.contracts import (
     AgentMessage,
@@ -40,13 +41,30 @@ _PROHIBITED_MARKERS = (
 )
 
 
+class ContextSlicer(Protocol):
+    """Duck-typed context-slicing capability injected by the composition root.
+
+    Keeps the agent free of concrete analyzer imports (architecture rule):
+    the provider returns an object with ``slices`` (each carrying
+    file_path/start_line/end_line/source_kind/matched_symbol/text) and the
+    agent only reads those facts.
+    """
+
+    def slice_project(self, root: Path, symbols: list[str], **kwargs: object) -> Any: ...
+
+
 class CodeAuditAgent(BaseAgent):
     """Review code findings semantically without becoming a verdict authority."""
 
     name = "code_audit"
 
-    def __init__(self, llm: BaseLLM | None = None) -> None:
+    def __init__(
+        self,
+        llm: BaseLLM | None = None,
+        context_slice_provider: ContextSlicer | None = None,
+    ) -> None:
         self.llm = llm
+        self.context_slice_provider = context_slice_provider
         try:
             self._system_prompt = _PROMPT_PATH.read_text(encoding="utf-8")
         except (OSError, UnicodeError):
@@ -64,7 +82,8 @@ class CodeAuditAgent(BaseAgent):
         evidence: list[Evidence] = []
         assessments: list[dict[str, Any]] = []
         for finding in candidates:
-            assessment = await self._assess(finding)
+            slices = await self._collect_slices(task, finding)
+            assessment = await self._assess(finding, slices)
             assessments.append(
                 {
                     "finding_id": finding.vulnerability_id,
@@ -73,6 +92,7 @@ class CodeAuditAgent(BaseAgent):
                     "recommended_severity": assessment["recommended_severity"],
                     "recommend_controlled_validation": assessment["recommended_severity"] in {"CRITICAL", "HIGH"},
                     "model_status": assessment["model_status"],
+                    "context_slice_count": len(slices),
                 }
             )
             evidence.append(
@@ -90,6 +110,30 @@ class CodeAuditAgent(BaseAgent):
                     created_by=self.name,
                 )
             )
+            for slice_item in slices:
+                evidence.append(
+                    Evidence(
+                        evidence_id=new_evidence_id(),
+                        task_id=task.task_id,
+                        evidence_type=EvidenceType.CODE_SNIPPET,
+                        source="context_slice_provider",
+                        description=(
+                            f"Bounded context slice ({slice_item.source_kind}) for "
+                            f"{slice_item.matched_symbol or slice_item.file_path.name}; "
+                            "factual provenance, not a verdict."
+                        ),
+                        data={
+                            "file": str(slice_item.file_path),
+                            "start_line": slice_item.start_line,
+                            "end_line": slice_item.end_line,
+                            "source_kind": slice_item.source_kind,
+                            "matched_symbol": slice_item.matched_symbol,
+                            "text": slice_item.text[:2000],
+                        },
+                        reliability=0.9,
+                        created_by=self.name,
+                    )
+                )
         message = AgentMessage(
             message_id=new_message_id(),
             task_id=task.task_id,
@@ -108,10 +152,48 @@ class CodeAuditAgent(BaseAgent):
         )
         return AgentResult(agent_name=self.name, messages=[message], evidence=evidence)
 
-    async def _assess(self, finding: VulnerabilityCandidate) -> dict[str, Any]:
+    async def _collect_slices(
+        self,
+        task: Task,
+        finding: VulnerabilityCandidate,
+    ) -> list[Any]:
+        """Collect bounded context slices for a candidate (L1 adoption).
+
+        Only reads the exact windows the review needs (definition + call
+        site + guard); never whole files, never outside the admitted target
+        root.  Slices are factual provenance appended as CODE_SNIPPET
+        evidence; the model opinion stays auxiliary.
+        """
+        if self.context_slice_provider is None:
+            return []
+        project_root = Path(task.target.path)
+        if not project_root.is_dir():
+            return []
+        symbols: list[str] = []
+        location = finding.location
+        if location is not None:
+            symbols.append(str(getattr(location, "function", "") or ""))
+        sink = str(finding.metadata.get("sink") or "")
+        if sink:
+            symbols.append(sink)
+        entry = str(finding.metadata.get("entry_point") or "")
+        if entry:
+            symbols.append(entry)
+        symbols = [s for s in dict.fromkeys(symbols) if s]
+        if not symbols:
+            return []
+        result = self.context_slice_provider.slice_project(project_root, symbols)
+        return list(getattr(result, "slices", []) or [])
+
+    async def _assess(
+        self,
+        finding: VulnerabilityCandidate,
+        slices: list[Any] | None = None,
+    ) -> dict[str, Any]:
         fallback = self._fallback_assessment(finding)
         if self.llm is None:
             return fallback
+        slices = slices or []
         request = {
             "candidate": {
                 "finding_id": finding.vulnerability_id,
@@ -131,6 +213,17 @@ class CodeAuditAgent(BaseAgent):
                 "taint_path": finding.metadata.get("taint_path", [])[:32],
                 "cfg_path": finding.metadata.get("cfg_path", [])[:32],
                 "snippet": str(finding.metadata.get("snippet") or "")[:500],
+                "context_slices": [
+                    {
+                        "file": str(item.file_path),
+                        "start_line": item.start_line,
+                        "end_line": item.end_line,
+                        "source_kind": item.source_kind,
+                        "matched_symbol": item.matched_symbol,
+                        "text": item.text[:800],
+                    }
+                    for item in slices[:8]
+                ],
             },
             "instruction": "按系统提示中的固定 JSON schema 做防御性候选复核。",
         }

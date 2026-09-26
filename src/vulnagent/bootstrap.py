@@ -13,7 +13,7 @@ construction is easier to test, review and reproduce.
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 from vulnagent.agent_runtime import (
     AgentRoute,
@@ -64,6 +64,7 @@ from vulnagent.analyzers.source.audit import (
     MockSourceAuditor,
     MultiLanguageSourceAuditor,
 )
+from vulnagent.analyzers.source.audit.context_slice import ContextSliceProvider
 from vulnagent.analyzers.source.parser import (
     MockSourceParser,
     SourceProjectParser,
@@ -390,7 +391,7 @@ def build_agent_registry(
         )
     if capabilities.code_audit_enabled:
         registry.register(
-            CodeAuditAgent(llm),
+            CodeAuditAgent(llm, context_slice_provider=ContextSliceProvider()),
             key=AgentRoute.CODE_AUDIT.value,
         )
     if capabilities.code_deobfuscator is not None:
@@ -415,6 +416,35 @@ def build_runtime_policy(
         max_route_repeats=settings.max_route_repeats,
         max_analysis_retries=settings.max_analysis_retries,
     )
+
+
+def read_profile_routes(task: Any) -> set[str] | None:
+    """Read the admitted-target profile hint from task metadata (L3).
+
+    The digest is written by the intake profiler at admission time; ``None``
+    means no profile hint, so the fixed route order is unchanged.  This is a
+    hint only — the Supervisor and Router remain the judges.
+    """
+    from vulnagent.agent_runtime.router import AgentRoute
+
+    digest = (task.target.metadata or {}).get("profile")
+    if not isinstance(digest, dict) or digest.get("profile_version") != "1":
+        return None
+    routes = {
+        AgentRoute.PLANNER.value,
+        AgentRoute.SOURCE_ANALYSIS.value,
+        AgentRoute.BINARY_ANALYSIS.value,
+        AgentRoute.VERIFICATION.value,
+        AgentRoute.REVIEWER.value,
+        AgentRoute.REPORT.value,
+    }
+    if digest.get("target_kind") == "binary":
+        routes.add(AgentRoute.PROGRAM_RESTORATION.value)
+    if digest.get("dynamic_run"):
+        routes.add(AgentRoute.FUZZ.value)
+    if digest.get("track") == "guided_variant_search":
+        routes.add(AgentRoute.CODE_AUDIT.value)
+    return routes
 
 
 def build_application(
@@ -526,6 +556,7 @@ def build_application(
             resolved_runtime_policy.max_analysis_retries,
             available_routes=set(resolved_agent_registry.list_agents()),
             gap_planner=gap_planner,
+            profile_hint_reader=read_profile_routes,
         ),
     )
 

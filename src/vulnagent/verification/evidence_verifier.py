@@ -15,22 +15,32 @@ why a candidate was confirmed, rejected, or left uncertain:
   runtime trace) never count toward confirmation on their own.
 * A single probative signal is plausible but under-proven -> ``UNCERTAIN``.
 * ``MODEL_REASONING_SUMMARY`` is only ever auxiliary; it can never confirm and
-  never raises confidence.
+  never raises confidence.  A candidate whose root cause rests ONLY on model
+  reasoning is ``REJECTED`` (guard: root cause never from model prose).
 * Confidence is computed only from the evidence that actually drives the verdict
   (never model reasoning, never low-reliability or auxiliary-only signals).
 * Candidates without evidence or with broken required fields are ``REJECTED``
   with the reason preserved (never silently dropped).
 
-V0.5 (Evidence Provenance): "distinct probative evidence kinds" is resolved
-through independence groups.  Evidence carrying a ``provenance.independence_group``
-counts once per group (three pieces from native-taint = one source); legacy
-evidence without provenance falls back to its type, preserving the old
-behaviour exactly.
+S3 layered semantics (strategy ``layered-v1``): every verdict evaluates the
+candidate against three explicit layers and records each layer's outcome in
+``metadata["layers"]``:
+
+* ``observed_fault``          - a reachable runtime fault artifact exists.
+* ``root_cause_supported``    - >=2 independent probative sources + usable location.
+* ``security_impact_supported`` - probative taint/data-flow/call-path reaches a
+  localized sink (impact alone never confirms).
+
+Guards: memory-fault classes (null deref, OOB, UAF, ...) may only confirm via
+``observed_fault`` or ``root_cause_supported``; root cause never originates
+from model reasoning; verification downgrades confidence along the chain
+observed -> root-cause -> impact -> uncertain and never invents a status.
 
 Only this boundary may emit ``CONFIRMED`` / ``REJECTED`` / ``UNCERTAIN``.
 """
 
 from collections import Counter
+from enum import Enum
 
 from vulnagent.contracts import (
     Evidence,
@@ -70,6 +80,12 @@ _PROBATIVE_BINARY = frozenset(
 )
 _PROBATIVE = _PROBATIVE_SOURCE | _PROBATIVE_BINARY
 
+# Security-impact evidence kinds: they show entry reachability / flow to a
+# dangerous operation; impact alone never confirms.
+_IMPACT_KINDS = frozenset(
+    {EvidenceType.TAINT_PATH, EvidenceType.DATA_FLOW, EvidenceType.CALL_PATH}
+)
+
 # Contextual signals: they may accompany a verdict but never confirm on their own.
 _AUXILIARY = frozenset(
     {
@@ -89,7 +105,33 @@ MIN_RUNTIME_RELIABILITY = 0.5
 
 _REQUIRED_CANDIDATE_FIELDS = ("title", "description", "source_agent")
 
-_RULE_VERSION = "0.4.0"
+# Memory-fault classes: confirmation requires observed_fault or
+# root_cause_supported (never impact or auxiliary signals alone).
+_MEMORY_FAULT_CWES = frozenset(
+    {
+        "CWE-476",  # NULL pointer dereference
+        "CWE-787",  # out-of-bounds write
+        "CWE-125",  # out-of-bounds read
+        "CWE-416",  # use after free
+        "CWE-415",  # double free
+        "CWE-761",  # free of pointer not at start
+        "CWE-122",  # heap buffer overflow
+        "CWE-123",  # write-what-where
+        "CWE-690",  # unchecked return to null
+        "CWE-119",  # improper restriction of operations
+    }
+)
+
+_RULE_VERSION = "0.6.0"
+_STRATEGY_VERSION = "layered-v1"
+
+
+class VerificationLayer(str, Enum):
+    """S3: the three evidence layers every verdict is graded against."""
+
+    OBSERVED_FAULT = "observed_fault"
+    ROOT_CAUSE_SUPPORTED = "root_cause_supported"
+    SECURITY_IMPACT_SUPPORTED = "security_impact_supported"
 
 
 def _location_supported(candidate: VulnerabilityCandidate) -> bool:
@@ -103,6 +145,11 @@ def _location_supported(candidate: VulnerabilityCandidate) -> bool:
         or location.module_name
         or location.function_name
     )
+
+
+def _memory_fault_class(candidate: VulnerabilityCandidate) -> bool:
+    cwe = (candidate.cwe_id or "").upper()
+    return cwe in _MEMORY_FAULT_CWES
 
 
 def _referenced_evidence(
@@ -125,7 +172,12 @@ def _referenced_evidence(
 class EvidenceVerifier:
     """Evidence-driven verifier implementing the ``VulnerabilityVerifier`` port."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        strategy_version: str = _STRATEGY_VERSION,
+    ) -> None:
+        self.strategy_version = strategy_version
         self._independence = EvidenceIndependenceEvaluator()
 
     async def verify(
@@ -175,13 +227,61 @@ class EvidenceVerifier:
         counts = Counter(item.evidence_type.value for item in resolved)
         evidence_ids = [item.evidence_id for item in resolved]
 
-        # 2. Runtime proof (only evidence at/above the runtime threshold counts).
+        # 2. Guard: root cause must never rest on model reasoning alone.
+        if all(item.evidence_type in _MODEL_ONLY for item in resolved):
+            return self._result(
+                candidate,
+                status=VulnerabilityStatus.REJECTED,
+                confidence=0.1,
+                rationale=(
+                    "Guard: root cause rests only on model reasoning.  Model "
+                    "prose cannot independently prove a vulnerability and does "
+                    "not raise confidence; awaiting code or runtime evidence."
+                ),
+                evidence_ids=evidence_ids,
+                counts=counts,
+                unresolved=unresolved,
+                extra={
+                    "stage": "guard_model_reasoning",
+                    "layers": {
+                        VerificationLayer.OBSERVED_FAULT.value: False,
+                        VerificationLayer.ROOT_CAUSE_SUPPORTED.value: False,
+                        VerificationLayer.SECURITY_IMPACT_SUPPORTED.value: False,
+                    },
+                },
+            )
+
+        # 3. Layer evaluation (S3): runtime proof, probative corroboration and
+        #    security-impact signals, each with its own threshold.
         runtime_proof = [
             item
             for item in resolved
             if item.evidence_type in _STRONG_RUNTIME
             and item.reliability >= MIN_RUNTIME_RELIABILITY
         ]
+        probative = [
+            item
+            for item in resolved
+            if item.evidence_type in _PROBATIVE
+            and item.reliability >= MIN_PROBATIVE_RELIABILITY
+        ]
+        probative_kinds = _unique_types(probative)
+        independent_sources = self._independence.independent_sources(probative)
+        independent_count = len(independent_sources)
+        location_ok = _location_supported(candidate)
+        impact_present = any(item.evidence_type in _IMPACT_KINDS for item in probative)
+
+        layers = {
+            VerificationLayer.OBSERVED_FAULT.value: bool(runtime_proof),
+            VerificationLayer.ROOT_CAUSE_SUPPORTED.value: (
+                independent_count >= 2 and location_ok
+            ),
+            VerificationLayer.SECURITY_IMPACT_SUPPORTED.value: (
+                impact_present and location_ok
+            ),
+        }
+
+        # 4. Runtime proof (observed fault): strongest layer, confirms.
         if runtime_proof:
             return self._result(
                 candidate,
@@ -191,7 +291,7 @@ class EvidenceVerifier:
                     3,
                 ),
                 rationale=(
-                    "Runtime proof evidence "
+                    "Layer observed_fault: runtime proof evidence "
                     f"({', '.join(sorted(_unique_types(runtime_proof)))}) supplied "
                     "for the candidate demonstrates a reachable fault; the verdict "
                     "is grounded in that runtime artifact."
@@ -203,25 +303,13 @@ class EvidenceVerifier:
                     "stage": "runtime_proof",
                     "participating_types": _unique_types(runtime_proof),
                     "independent_sources": self._independence.independent_sources(runtime_proof),
+                    "layers": layers,
                 },
             )
 
-        # 3. Probative static signals (each must clear the probative threshold).
-        #    V0.5: corroboration is counted by *independent sources*.  Evidence
-        #    from the same independence group counts once, no matter how many
-        #    evidence types one analyzer split it into.  Legacy evidence without
-        #    provenance falls back to its type (old behaviour).
-        probative = [
-            item
-            for item in resolved
-            if item.evidence_type in _PROBATIVE
-            and item.reliability >= MIN_PROBATIVE_RELIABILITY
-        ]
-        probative_kinds = _unique_types(probative)
-        independent_groups = self._independence.independent_sources(probative)
-        independent_count = len(independent_groups)
-        location_ok = _location_supported(candidate)
-
+        # 5. Root-cause corroboration (>=2 independent probative sources +
+        #    usable location).  Guard: memory-fault classes confirm exactly here
+        #    (or via observed_fault), never via impact/auxiliary alone.
         if independent_count >= 2 and location_ok:
             return self._result(
                 candidate,
@@ -231,10 +319,16 @@ class EvidenceVerifier:
                     3,
                 ),
                 rationale=(
-                    "Independent static corroboration: multiple probative evidence "
+                    "Layer root_cause_supported: multiple probative evidence "
                     f"kinds ({', '.join(sorted(probative_kinds))}) from "
                     f"{independent_count} independent analysis sources at/above the "
                     "reliability threshold agree on a usable candidate location."
+                    + (
+                        " Security-impact layer additionally supported by "
+                        "taint/data-flow/call-path to the localized sink."
+                        if layers[VerificationLayer.SECURITY_IMPACT_SUPPORTED.value]
+                        else ""
+                    )
                 ),
                 evidence_ids=evidence_ids,
                 counts=counts,
@@ -242,17 +336,19 @@ class EvidenceVerifier:
                 extra={
                     "stage": "static_corroboration",
                     "participating_types": probative_kinds,
-                    "independent_sources": independent_groups,
+                    "independent_sources": independent_sources,
                     "independent_count": independent_count,
+                    "layers": layers,
                 },
             )
 
+        # 6. Single independent probative source -> plausible but under-proven.
         if independent_count >= 1:
             reason = (
-                "Single independent probative source "
-                f"({', '.join(sorted(probative_kinds))}); candidate is plausible "
-                "but under-proven without a second independent signal or runtime "
-                "reproduction."
+                "Layer root_cause_supported not satisfied: single independent "
+                f"probative source ({', '.join(sorted(probative_kinds))}); "
+                "candidate is plausible but under-proven without a second "
+                "independent signal or runtime reproduction."
             )
             if not location_ok:
                 reason += " The candidate also lacks a usable location."
@@ -270,28 +366,13 @@ class EvidenceVerifier:
                 extra={
                     "stage": "under_proven",
                     "participating_types": probative_kinds,
-                    "independent_sources": independent_groups,
+                    "independent_sources": independent_sources,
                     "independent_count": independent_count,
+                    "layers": layers,
                 },
             )
 
-        # 4. No qualifying probative evidence.
-        if any(item.evidence_type in _MODEL_ONLY for item in resolved):
-            return self._result(
-                candidate,
-                status=VulnerabilityStatus.UNCERTAIN,
-                confidence=0.2,
-                rationale=(
-                    "Only model reasoning summary was supplied; model prose "
-                    "cannot independently prove a vulnerability and does not "
-                    "raise confidence. Awaiting code or runtime corroboration."
-                ),
-                evidence_ids=evidence_ids,
-                counts=counts,
-                unresolved=unresolved,
-                extra={"stage": "model_only", "participating_types": []},
-            )
-
+        # 7. No qualifying probative evidence (only model/auxiliary).
         auxiliary_present = any(item.evidence_type in _AUXILIARY for item in resolved)
         if auxiliary_present:
             return self._result(
@@ -307,7 +388,11 @@ class EvidenceVerifier:
                 evidence_ids=evidence_ids,
                 counts=counts,
                 unresolved=unresolved,
-                extra={"stage": "auxiliary_only", "participating_types": []},
+                extra={
+                    "stage": "auxiliary_only",
+                    "participating_types": [],
+                    "layers": layers,
+                },
             )
 
         return self._result(
@@ -322,7 +407,11 @@ class EvidenceVerifier:
             evidence_ids=evidence_ids,
             counts=counts,
             unresolved=unresolved,
-            extra={"stage": "no_qualifying_evidence", "participating_types": []},
+            extra={
+                "stage": "no_qualifying_evidence",
+                "participating_types": [],
+                "layers": layers,
+            },
         )
 
     @staticmethod
@@ -341,6 +430,7 @@ class EvidenceVerifier:
         metadata = {
             "verifier": "EvidenceVerifier",
             "rule_version": _RULE_VERSION,
+            "strategy_version": _STRATEGY_VERSION,
             "evidence_counts": dict(counts),
             "unresolved_evidence_ids": unresolved,
             "confidence_band": _confidence_band(confidence),

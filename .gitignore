@@ -71,6 +71,10 @@ frontend/dist/
 third_party/
 artifacts/build_qjs.log
 
+# Session scratch and screenshot scratch (local only)
+.sessions/
+_shots/
+
 
 samples/external_protection_v05/nsis_3_12/tool/
 samples/external_protection_v05/owasp_mas_crackmes/

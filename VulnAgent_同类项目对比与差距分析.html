@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VulnAgent 同类项目对比与差距分析</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%2312151a'/%3E%3Cpath d='M8 15.5 12 7l4 8.5h-2.4L12 11.6l-1.6 3.9z' fill='%23fbbf24'/%3E%3Ccircle cx='12' cy='18.4' r='1.1' fill='%23f87171'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Sans+SC:wght@400;500;700;900&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root{
+  --bg:#0f1216; --panel:#171c22; --panel2:#1e242c; --line:#2a313a;
+  --text:#e7ebef; --muted:#9aa6b2; --faint:#6b7684;
+  --amber:#fbbf24; --red:#f87171; --green:#4ade80; --cyan:#67e8f9; --blue:#7dd3fc;
+  --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:'Noto Sans SC',-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.7;font-size:15.5px}
+.wrap{max-width:1180px;margin:0 auto;padding:0 28px}
+a{color:var(--blue);text-decoration:none}
+a:hover{text-decoration:underline}
+code,.mono{font-family:var(--mono);font-size:.92em}
+
+/* ---------- Hero ---------- */
+header.hero{padding:64px 0 40px;border-bottom:1px solid var(--line);background:
+  radial-gradient(1200px 400px at 80% -10%,rgba(251,191,36,.07),transparent 60%),
+  radial-gradient(900px 300px at 0% 0%,rgba(103,232,249,.05),transparent 60%)}
+.kicker{font-family:var(--mono);font-size:12.5px;letter-spacing:.18em;color:var(--amber);text-transform:uppercase;margin-bottom:18px}
+h1{font-size:clamp(30px,4.6vw,50px);font-weight:900;line-height:1.18;letter-spacing:-.01em}
+h1 .hl{color:var(--amber)}
+.sub{margin-top:18px;color:var(--muted);max-width:780px;font-size:16.5px}
+.metabar{display:flex;flex-wrap:wrap;gap:10px 26px;margin-top:28px;font-family:var(--mono);font-size:12.5px;color:var(--faint)}
+.metabar b{color:var(--text);font-weight:600}
+
+/* stat callouts */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:36px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px 18px 16px}
+.stat .num{font-family:var(--mono);font-size:30px;font-weight:600;line-height:1}
+.stat .lab{margin-top:8px;color:var(--muted);font-size:13px}
+.stat.warn .num{color:var(--red)}
+.stat.ok .num{color:var(--green)}
+.stat.amber .num{color:var(--amber)}
+.stat.cyan .num{color:var(--cyan)}
+
+/* ---------- sections ---------- */
+section{padding:48px 0;border-bottom:1px solid var(--line)}
+h2{font-size:26px;font-weight:800;letter-spacing:-.01em;margin-bottom:6px}
+h2 .idx{font-family:var(--mono);color:var(--amber);font-weight:600;font-size:15px;margin-right:12px}
+.lead{color:var(--muted);margin:10px 0 26px;max-width:860px}
+h3{font-size:18px;font-weight:700;margin:28px 0 10px}
+
+/* project cards */
+.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.pcard{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:22px 22px 18px}
+.pcard .tag{display:inline-block;font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:4px;letter-spacing:.05em}
+.tag.bench{background:rgba(103,232,249,.12);color:var(--cyan)}
+.tag.comp{background:rgba(251,191,36,.12);color:var(--amber)}
+.tag.research{background:rgba(125,211,252,.12);color:var(--blue)}
+.tag.pentest{background:rgba(167,139,250,.14);color:#c4b5fd}
+.pcard h4{font-size:17px;margin:10px 0 4px}
+.pcard .one{color:var(--muted);font-size:13.5px;margin-bottom:12px}
+.pcard ul{list-style:none}
+.pcard li{font-size:13.8px;padding:5px 0 5px 18px;position:relative;border-top:1px dashed var(--line);color:#cdd5dd}
+.pcard li:first-of-type{border-top:none}
+.pcard li::before{content:'▪';position:absolute;left:0;color:var(--faint)}
+.pcard li b{color:var(--text)}
+.pcard .win{color:var(--green)}
+.pcard .gap{color:var(--red)}
+
+/* table */
+.tblwrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px}
+table{border-collapse:collapse;width:100%;font-size:13.5px;background:var(--panel);table-layout:fixed;min-width:900px}
+colgroup col{/* set inline */}
+th,td{padding:11px 12px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line);word-wrap:break-word}
+th{background:var(--panel2);font-weight:700;color:var(--text);font-size:12.5px;letter-spacing:.02em}
+tr:last-child td{border-bottom:none}
+td.dim{color:var(--muted)}
+.hi{color:var(--amber);font-weight:600}
+.bad{color:var(--red);font-weight:600}
+.good{color:var(--green);font-weight:600}
+.mono{font-family:var(--mono)}
+
+/* chart containers */
+.chartbox{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;margin-top:18px}
+.chart{width:100%;height:480px}
+.chart-note{color:var(--faint);font-size:12.5px;margin-top:8px}
+.chart-fallback{display:none}
+
+/* verdict / scoring */
+.scorecard{border-left:3px solid var(--line);padding:16px 20px;background:var(--panel);border-radius:0 10px 10px 0;margin:14px 0}
+.scorecard.must{border-left-color:var(--red)}
+.scorecard.ok{border-left-color:var(--green)}
+.scorecard.half{border-left-color:var(--amber)}
+.scorecard .row{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.scorecard .req{font-weight:700;font-size:16px}
+.badge{font-family:var(--mono);font-size:11.5px;padding:2px 9px;border-radius:20px;font-weight:600}
+.badge.must{background:rgba(248,113,113,.15);color:var(--red)}
+.badge.half{background:rgba(251,191,36,.15);color:var(--amber)}
+.badge.ok{background:rgba(74,222,128,.15);color:var(--green)}
+.scorecard p{color:#cdd5dd;font-size:14px;margin-top:8px}
+.scorecard p b{color:var(--text)}
+
+/* priority list */
+ol.prio{list-style:none;counter-reset:p}
+ol.prio li{counter-increment:p;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px 16px 60px;position:relative;margin-bottom:12px}
+ol.prio li::before{content:counter(p);position:absolute;left:18px;top:18px;width:30px;height:30px;border-radius:8px;background:var(--panel2);color:var(--amber);font-family:var(--mono);font-weight:600;display:flex;align-items:center;justify-content:center}
+ol.prio li h4{font-size:16px;margin-bottom:4px}
+ol.prio li p{color:var(--muted);font-size:13.8px}
+ol.prio li .tag2{font-family:var(--mono);font-size:11px;color:var(--cyan)}
+
+/* sources */
+ol.src{font-size:13px;color:var(--muted);line-height:1.9}
+ol.src li{margin-bottom:2px}
+footer{padding:36px 0 60px;color:var(--faint);font-size:12.5px;font-family:var(--mono)}
+
+@media (max-width:860px){
+  .stats{grid-template-columns:1fr 1fr}
+  .pgrid{grid-template-columns:1fr}
+  .wrap{padding:0 18px}
+  .chart{height:420px}
+}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="kicker">Course Design · Gap Analysis · 2026-09</div>
+    <h1>VulnAgent 与同类 LLM/Agent<br>漏洞挖掘系统的<span class="hl">对比与差距分析</span></h1>
+    <p class="sub">面向「网络空间安全课程设计」验收，横向对照 ExploitGym、DARPA AIxCC 决赛系统、Vulnhuntr、Google Big Sleep、PentestGPT 等代表项目，聚焦真实漏洞战果这一最硬指标，逐条对齐课程四项要求打分。</p>
+    <div class="metabar">
+      <span>对标项目 <b>11</b></span>
+      <span>事实来源 <b>30+</b></span>
+      <span>本地代码 <b>28,131 行 / 239 文件</b></span>
+      <span>测试 <b>763 passed</b></span>
+    </div>
+
+    <div class="stats">
+      <div class="stat cyan"><div class="num">12</div><div class="lab">自研 Agent（统一 BaseAgent + AgentMessage）</div></div>
+      <div class="stat amber"><div class="num">0</div><div class="lab">在 ExploitGym 上跑通的任务数（课程要求②）</div></div>
+      <div class="stat warn"><div class="num">0</div><div class="lab">已提交的真实 CVE / 国家漏洞库记录（要求③④）</div></div>
+      <div class="stat ok"><div class="num">763</div><div class="lab">pytest 全量通过（159s，2 skipped）</div></div>
+    </div>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <h2><span class="idx">01</span>VulnAgent 当前进度概览</h2>
+    <p class="lead">以下事实来自本地仓库勘查（README 标称 V0.4，已合入 V0.5 加壳/混淆还原、V0.6 大模型服务代码审计）。结论先行：<b>工程骨架与多智能体协议在课程设计量级相当扎实，但「真实漏洞战果」这一项与所有对标项目之间存在代差。</b></p>
+    <div class="pgrid">
+      <div class="pcard">
+        <span class="tag research">架构与工程</span>
+        <h4>多智能体运行时已成型</h4>
+        <ul>
+          <li>12 个 Agent：planner / source_audit / binary_analysis / fuzz / verification / reviewer / report / code_audit / code_deobfuscation / program_restoration 等。</li>
+          <li>agent_runtime Supervisor 有界路由，<b>MAX_AGENT_STEPS=15</b>，结构化路由 + 确定性回退。</li>
+          <li>统一 Schema：Task / AgentMessage / VulnerabilityCandidate / Evidence，<b>发现侧只能产 CANDIDATE，Verification 独占 CONFIRMED/REJECTED</b>。</li>
+          <li>Evidence First；poc/service.py 只生成不联网、不执行目标的受控 replay 脚本。</li>
+          <li>前端仅 React/Vite 10 文件约 743 行，FastAPI 挂载 dist。</li>
+        </ul>
+      </div>
+      <div class="pcard">
+        <span class="tag bench">分析能力</span>
+        <h4>静态 / 动态 / 符号三条线都接了</h4>
+        <ul>
+          <li>Python 深度自研审计 + Semgrep/Bandit 融合。</li>
+          <li>Tree-sitter 覆盖 Go / C / C++，做到 AST、函数内 CFG、<b>函数内</b>污点。</li>
+          <li>PE/ELF/DEX 静态解析、8 类保护识别、IAT 重建、OLLVM 静态还原、自研符号执行引擎。</li>
+          <li>真实 libFuzzer + ASan 对接（libfuzzer.py 341 行）+ Windows Job Object 隔离。</li>
+          <li>LLM 真实调用对比：DeepSeek / GLM / Kimi，简单样本上 F1 均为 1.0。</li>
+        </ul>
+      </div>
+      <div class="pcard">
+        <span class="tag pentest">评测现状</span>
+        <h4>样本全部是自研教学集</h4>
+        <ul>
+          <li>20 个 source + 14 个 binary 自研教学样本，10 次 fuzz 消融，BlindEvaluator。</li>
+          <li><span class="bad">无真实 ground truth、无真实项目、无真实 CVE 上的发现记录。</span></li>
+          <li>加壳/混淆样本 0 finding 或仅 UNCERTAIN；未动态执行。</li>
+          <li>third_party/exploitgym/ 已引入数据集目录，但 README/进度文档<b>无任何在 ExploitGym 上跑通任务的实验报告</b>。</li>
+        </ul>
+      </div>
+      <div class="pcard">
+        <span class="tag comp">作者自述缺口</span>
+        <h4>作者已承认的短板</h4>
+        <ul>
+          <li>深度审计主要覆盖 Python；<b>C/C++/Go 跨函数污点不完整</b>。</li>
+          <li>无真正网络/文件系统隔离；无跨进程 checkpoint。</li>
+          <li>从未在真实大型开源项目 / 真实 CVE 上验证过漏洞发现能力。</li>
+          <li>这几点与下面对标项目的差距方向一致。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2><span class="idx">02</span>对标项目逐个简介</h2>
+    <p class="lead">分两组：A 组为漏洞挖掘 / ExploitGym 生态（主对比），B 组为渗透测试与 LLM+fuzz 趋势（参照）。硬事实以 GitHub / 论文 / 官方博客为准，查不到处标注「未查证」。</p>
+
+    <h3>A 组 · 漏洞挖掘与 ExploitGym 生态</h3>
+    <div class="pgrid">
+      <div class="pcard">
+        <span class="tag bench">基准 · 必对标的目标</span>
+        <h4>ExploitGym（UC Berkeley RDI，2026-05）</h4>
+        <div class="one">「已知 bug → 完整武器化 exploit」能力基准，前作 CyberGym 的下游。论文 arXiv:2605.11086。</div>
+        <ul>
+          <li>共 <b>898 个实例</b>：用户态 OSS-Fuzz <b>520</b>、V8/ClusterFuzz <b>185</b>、内核 kernelCTF+syzbot <b>193</b>（内核两类精确拆分未单独公开）。</li>
+          <li>判定：把 PoV 扩展成读到<b>动态生成的特权 flag</b>，两小时 wall-clock，再由 agent-as-a-judge 确认用的是「指定漏洞」。</li>
+          <li class="win">官方 baseline：最强 Claude Mythos 仅 157/898（17.5%）；GPT-5.5 120/898（13.4%）。开缓解措施后几乎归零。</li>
+          <li><b>对接方式</b>：uv 装依赖 + Docker，拉起 controller/Squid 出站防火墙/LLM proxy 三件套，注入四个 CYBERGYM_* 环境变量；内核任务需 KVM。</li>
+          <li>与 DARPA AIxCC <b>无隶属关系</b>：AIxCC 比「发现+补丁」，ExploitGym 比「已知 bug→exploit」。</li>
+        </ul>
+      </div>
+
+      <div class="pcard">
+        <span class="tag comp">竞赛 · 天花板</span>
+        <h4>DARPA AIxCC 2025 决赛（Team Atlanta / ATLANTIS）</h4>
+        <div class="one">2025-08-08 拉斯维加斯 DEF CON 33，总奖池 2250 万美元，42 队初选留 7 队。</div>
+        <ul>
+          <li class="win">冠军 <b>ATLANTIS</b>（Georgia Tech + Samsung + KAIST + POSTECH），奖金 400 万；亚军 Trail of Bits / Buttercup 300 万；季军 Theori 150 万。</li>
+          <li>ATLANTIS：70 个目标中找到 43 个漏洞（61%），提交准确率 91%；路线「传统程序分析 + LLM」混合，论文 arXiv:2509.14589。</li>
+          <li>全场口径：7 队在 63 个合成漏洞中找到 54 个（86%）、修复 43 个；另发现 <b>18 个真实未知 0day</b>（6 C / 12 Java）。</li>
+          <li>Buttercup：<b>全程只用非推理型 LLM</b>，28 个漏洞、90% 准确率、181 美元/point。</li>
+          <li>七套决赛 CRS 已全部开源。</li>
+        </ul>
+      </div>
+
+      <div class="pcard">
+        <span class="tag research">开源框架</span>
+        <h4>CAI（aliasrobotics/cai）</h4>
+        <div class="one">注意：<b>CAI 不是 AIxCC 参赛队</b>，它是 Alias Robotics 的通用攻防 Agent 框架（2025-04 开源），现已归档只读。</div>
+        <ul>
+          <li>六大支柱：Agents / Tools / Handoffs / Patterns / Turns / HITL；走 LiteLLM 路由 300+ 模型，15+ 预设多 Agent 模式。</li>
+          <li>约 <b>9.8k star</b>；偏「LLM + 现成安全工具编排」，<b>不做二进制反汇编 / 污点那种深度程序分析</b>。</li>
+          <li>30+ CVE 是公司多年机器人安全累计披露，<b>不能全算 Agent 自动产出</b>；CTF 战绩 Neurogrid #1。</li>
+        </ul>
+      </div>
+
+      <div class="pcard">
+        <span class="tag research">真实战果标杆</span>
+        <h4>Vulnhuntr（protectai/vulnhuntr）</h4>
+        <div class="one">零样本、<b>仅 Python</b> 代码库的 LLM 自主远程漏洞扫描器，AGPL-3.0。</div>
+        <ul>
+          <li>流程：读 README → 全文初扫 → 逐可疑点用漏洞专用 prompt 二扫 → 跨文件补调用链 → 输出 scratchpad + PoC + confidence。</li>
+          <li>用 Jedi 做调用链解析，本质是<b>静态调用链 + LLM 推理</b>，不做动态/污点/二进制。</li>
+          <li class="win">官方样本表：扫 gpt_academic / ComfyUI / Langflow / FastChat / Ragflow / LLaVA 等 8 个热门仓库，外部口径 <b>12+ 个生产 0day</b>。</li>
+          <li class="gap">只支持 Python、只认 LFI/AFO/RCE/XSS/SQLi/SSRF/IDOR 七类；当前 star 数未查证。</li>
+        </ul>
+      </div>
+
+      <div class="pcard">
+        <span class="tag research">闭源 SOTA</span>
+        <h4>Google Big Sleep / Project Naptime</h4>
+        <div class="one">Project Zero + DeepMind 内部 AI 漏洞研究 Agent，不开源、不公开模型。</div>
+        <ul>
+          <li class="win">2024-10 在 SQLite 开发版发现可利用栈缓冲区下溢（当天修复、未进 release）——首个公开确认的 AI 在生产软件独立挖到真实 0day。</li>
+          <li class="win">2025-07 结合 GTIG 威胁情报，<b>抢在在野利用前</b>定位 SQLite CVE-2025-6965（CVSS 7.2）。</li>
+          <li>后续 ANGLE CVE-2025-9478、WebKit 5 个漏洞均为媒体报道口径；官方<b>从未公布累计 CVE 总数</b>。</li>
+          <li>模式：variant analysis 定向搜寻 + 沙箱执行，而非无差别 fuzz。</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>B 组 · 渗透测试与 LLM+fuzz 趋势</h3>
+    <div class="pgrid">
+      <div class="pcard">
+        <span class="tag pentest">渗透 agent</span>
+        <h4>PentestGPT（GreyDGL，USENIX Security 2024）</h4>
+        <div class="one">注意：论文是 <b>USENIX Security 2024，不是 NDSS 2023</b>。面向 CTF / HTB 靶机的半自主渗透研究原型。</div>
+        <ul>
+          <li>三模块各持独立 LLM 会话：Reasoning（维护渗透任务树 PTT）/ Generation（出命令）/ Parsing（解析回显）。</li>
+          <li class="gap"><b>human-in-the-loop 半自主</b>：legacy 靠人把工具输出喂回；调用 nmap/Gobuster 等现成工具，自身不重写扫描器。</li>
+          <li>论文：任务完成率 80%（裸 GPT-4 仅 47%），相对 GPT-3.5 +228.6%，HTB 全球 #900；约 15.6k star。</li>
+        </ul>
+      </div>
+
+      <div class="pcard">
+        <span class="tag pentest">渗透 / chatbot</span>
+        <h4>HackerGPT · AutoAttacker · PentestAgent</h4>
+        <div class="one">渗透类 LLM agent 整体处于「受控靶机」阶段。</div>
+        <ul>
+          <li>HackerGPT/HackerAI：本质安全 chatbot，2026-09 才加 Web CTF 浏览器自动化（靶标限 Juice Shop），~597 star。</li>
+          <li>AutoAttacker（arXiv:2403.01038）只做 post-breach 阶段，隔离环境评测，非端到端。</li>
+          <li>PentestAgent（arXiv:2411.05185）：GPT-4 端到端成功率 74.2%。<b>所有此类评测几乎都在 CTF/HTB/Metasploitable。</b></li>
+        </ul>
+      </div>
+
+      <div class="pcard">
+        <span class="tag bench">LLM4Vuln 趋势</span>
+        <h4>LLM 漏洞能力现状综述</h4>
+        <div class="one">学界共识：进步明显，但「跨文件 / 复杂漏洞」仍是短板。</div>
+        <ul>
+          <li>LLM4Vuln（NTU，arXiv:2401.16185）建 UniVul benchmark，6 模型 × 3528 场景，<b>实战挖到 14 个 0-day、$3,576 赏金</b>。</li>
+          <li>2025 年强模型（GPT-5/Claude Opus 4.1）在 50 个给定漏洞上检出 44–46、修复 42–43。</li>
+          <li>AST/数据流/RAG/代码切片能提升，但跨文件是公认难点。</li>
+        </ul>
+      </div>
+
+      <div class="pcard">
+        <span class="tag bench">LLM + Fuzz</span>
+        <h4>ChatAFL · Fuzz4All · FuzzGPT</h4>
+        <div class="one">LLM 当 fuzz 输入引擎，都只做单点 fuzz，不与多 agent 编排融合。</div>
+        <ul>
+          <li>ChatAFL（NDSS'24）：LLM 引导协议 fuzz，状态转移超 AFLNET 47.6%、速度 48×，但偏文本协议。</li>
+          <li class="win">Fuzz4All（ICSE'24）：通用 LLM fuzzer，在 GCC/Clang/OpenJDK 发现 76 bug，47–64 个先前未知。</li>
+          <li class="win">FuzzGPT（2023）：用历史 bug 引导造边缘用例，PyTorch/TF 上 76 bug、49 未知、含 11 个高优安全漏洞。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2><span class="idx">03</span>横向对比矩阵</h2>
+    <p class="lead">逐维对照，最右「真实漏洞战果」是最关键一列——它区分了「课程设计骨架」与「真的挖到过东西」。</p>
+    <div class="tblwrap">
+    <table>
+      <colgroup>
+        <col style="width:14%"><col style="width:15%"><col style="width:13%"><col style="width:18%"><col style="width:22%"><col style="width:18%">
+      </colgroup>
+      <thead><tr>
+        <th>系统</th><th>定位 / 场景</th><th>自主性</th><th>工具链与分析深度</th><th class="hi">真实漏洞战果（最关键）</th><th>工程 / 评测</th>
+      </tr></thead>
+      <tbody>
+      <tr>
+        <td><b>VulnAgent</b></td>
+        <td class="dim">课程设计：多智能体源码+二进制+Fuzz 审计</td>
+        <td>Supervisor 有界路由，半自主</td>
+        <td>Python 深审 + Semgrep/Bandit；Tree-sitter C/C++/Go 函数内污点；OLLVM 还原 + 自研符号执行；真 libFuzzer/ASan</td>
+        <td class="bad">0 真实 CVE；0 ExploitGym 任务；仅 34 个自研教学样本</td>
+        <td>28k 行 / 763 测试；前端 743 行；无公开评测报告</td>
+      </tr>
+      <tr>
+        <td><b>ATLANTIS</b><br><span class="dim">(AIxCC 冠军)</span></td>
+        <td class="dim">自主发现 OSS 漏洞+打补丁</td>
+        <td class="good">全自主，人在环外</td>
+        <td>传统程序分析 + LLM 混合，多语言</td>
+        <td class="good">决赛 70 目标找 43 洞（61%）、91% 准确率；全场 18 个真实 0day</td>
+        <td>决赛实测；论文 arXiv:2509.14589；CRS 已开源</td>
+      </tr>
+      <tr>
+        <td><b>Big Sleep</b><br><span class="dim">(Google)</span></td>
+        <td class="dim">内部 AI 漏洞研究 agent</td>
+        <td class="good">自主 variant 分析</td>
+        <td>AI 推理 + 专用工具链 + 沙箱；不开源</td>
+        <td class="good">SQLite 真实 0day（2024-10）；抢在野利用前定位 CVE-2025-6965</td>
+        <td>官方博客背书；无累计 CVE 数</td>
+      </tr>
+      <tr>
+        <td><b>Vulnhuntr</b></td>
+        <td class="dim">Python 仓库 RCE 扫描</td>
+        <td>自主</td>
+        <td>纯静态调用链（Jedi）+ LLM；仅 Python、7 类洞</td>
+        <td class="good">扫 8 个热门仓库，外部口径 12+ 生产 0day</td>
+        <td>PyPI 开源；局限官方自述清晰</td>
+      </tr>
+      <tr>
+        <td><b>CAI</b></td>
+        <td class="dim">通用攻防 agent 框架 / CTF</td>
+        <td>多模式，可 HITL</td>
+        <td>LLM + 现成工具编排；不做深度程序分析</td>
+        <td class="dim">公司累计 30+ CVE（非全为 Agent 自动产出）；CTF #1</td>
+        <td>~9.8k star；已归档只读</td>
+      </tr>
+      <tr>
+        <td><b>PentestGPT</b></td>
+        <td class="dim">CTF/HTB 渗透引导</td>
+        <td class="dim">半自主 HITL</td>
+        <td>调用 nmap/Gobuster；三 LLM 会话分工</td>
+        <td class="dim">靶机 flag 80% 完成率，无真实 CVE</td>
+        <td>USENIX Sec'24；~15.6k star</td>
+      </tr>
+      <tr>
+        <td><b>Fuzz4All/FuzzGPT</b></td>
+        <td class="dim">LLM 生成 fuzz 输入</td>
+        <td>自主 fuzz</td>
+        <td>单点 fuzz，不与编排融合</td>
+        <td class="good">Fuzz4All 76 bug（47–64 未知）；FuzzGPT 76 bug/49 未知</td>
+        <td>ICSE'24 / 2023 论文；开源</td>
+      </tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2><span class="idx">04</span>能力对比可视化</h2>
+    <p class="lead">雷达图为作者基于调研的<b>定性分级（1–5）</b>，非精确测量；条形图为 ExploitGym 官方公开 baseline 实数。若 ECharts CDN 加载失败，下方自动降级为表格。</p>
+
+    <div class="chartbox">
+      <div id="radar" class="chart"></div>
+      <div class="chart-note">图 1 · 六系统能力雷达（定性 1–5；「真实漏洞战果」一项 VulnAgent 与顶尖系统拉开代差）。</div>
+      <div id="radarFallback" class="chart-fallback">
+        <table><colgroup><col style="width:34%"></colgroup><thead><tr><th>维度</th><th>VulnAgent</th><th>ATLANTIS</th><th>BigSleep</th><th>Vulnhuntr</th><th>CAI</th><th>PentestGPT</th></tr></thead>
+        <tbody>
+        <tr><td>自主性</td><td>4</td><td>5</td><td>5</td><td>4</td><td>4</td><td>2.5</td></tr>
+        <tr><td>静态分析深度</td><td>4</td><td>4</td><td>4</td><td>3</td><td>2</td><td>1</td></tr>
+        <tr><td>动态/Fuzz深度</td><td>4</td><td>5</td><td>5</td><td>1</td><td>2</td><td>2</td></tr>
+        <tr><td>符号/逆向</td><td>4</td><td>4</td><td>4</td><td>1</td><td>1</td><td>1</td></tr>
+        <tr><td class="bad">真实漏洞战果</td><td class="bad">1</td><td>5</td><td>5</td><td>4</td><td>3</td><td>2</td></tr>
+        <tr><td>评测严谨度</td><td>2</td><td>5</td><td>4</td><td>3</td><td>2</td><td>4</td></tr>
+        <tr><td>工程成熟度</td><td>4</td><td>5</td><td>5</td><td>3</td><td>4</td><td>4</td></tr>
+        </tbody></table>
+      </div>
+    </div>
+
+    <div class="chartbox">
+      <div id="bar" class="chart" style="height:380px"></div>
+      <div class="chart-note">图 2 · ExploitGym 官方 baseline：两小时限时、关闭缓解下「用指定漏洞成功」的任务数（总数 898）。即便最强模型 Mythos 也仅 157/898 ≈ 17.5%——课程要求②的真实难度量级。</div>
+      <div id="barFallback" class="chart-fallback">
+        <table><thead><tr><th>模型 / harness</th><th>用指定漏洞成功</th><th>总 flag 捕获</th></tr></thead>
+        <tbody>
+        <tr><td>Claude Mythos Preview</td><td>157</td><td>226</td></tr>
+        <tr><td>GPT-5.5 (Codex CLI)</td><td>120</td><td>210</td></tr>
+        <tr><td>GPT-5.4</td><td>54</td><td>65</td></tr>
+        <tr><td>Claude Opus 4.6</td><td>15</td><td>36</td></tr>
+        <tr><td>Gemini 3.1 Pro</td><td>12</td><td>18</td></tr>
+        <tr><td>Claude Opus 4.7</td><td>7</td><td>9</td></tr>
+        <tr><td>GLM-5.1</td><td>4</td><td>11</td></tr>
+        </tbody></table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2><span class="idx">05</span>缺点深度分析：对齐课程四项要求逐条打分</h2>
+    <p class="lead">课程要求四条，逐条判定现状、缺口性质，并区分「课程约束下可接受」与「答辩前必须补」。核心结论：<b>VulnAgent 在 ExploitGym 上是零实战、从未产出真实 CVE</b>，这是与所有对标项目最本质的差距。</p>
+
+    <div class="scorecard half">
+      <div class="row"><span class="req">① 收集已知漏洞 PoC，分析触发 / 利用原理</span><span class="badge half">部分达标 · 答辩前补</span></div>
+      <p><b>现状</b>：仓库 third_party/exploitgym/ 已引入大量 PoV（kernelctf、syzbot、v8 clusterfuzz pov），poc/service.py 有受控 replay 脚本接口。<b>缺口</b>：停留在「数据集摆进来」，没有形成「逐 PoC 分析触发条件 → 根因 → 利用原由」的文档化产物；加壳/混淆样本 0 finding 或仅 UNCERTAIN，说明原理分析未闭环。<br><b>判定</b>：这一条<b>课程约束下可接受半成品</b>，但答辩前必须挑 3–5 个 PoC 写出结构化分析（触发输入、根因 patch、为什么能越权），否则等于没做。</p>
+    </div>
+
+    <div class="scorecard must">
+      <div class="row"><span class="req">② 用多智能体系统挖掘 ExploitGym 安全基准</span><span class="badge must">未达标 · 最致命缺口</span></div>
+      <p><b>现状</b>：数据集目录在，但<b>0 个任务跑通、0 份实验报告</b>。对照图 2，即使 Claude Mythos 也只解出 157/898——ExploitGym 是「已知 bug→武器化」，不是从零找洞，门槛其实比想象低；对接只需按官方 README 起 controller+proxy 三件套并注入四个 CYBERGYM_* 环境变量。<b>判定</b>：这是课程点名要求，<b>答辩前必须补，且是性价比最高的一块</b>——哪怕只在最简单的用户态任务上跑通 1–2 个 flag，也能把「0 实战」写成「0→2」。</p>
+    </div>
+
+    <div class="scorecard must">
+      <div class="row"><span class="req">③ 用多智能体系统挖掘未公开漏洞</span><span class="badge must">未达标 · 需降预期但要有动作</span></div>
+      <p><b>现状</b>：从未在真实大型开源项目/真实 CVE 上验证过发现能力；DeepSeek/GLM/Kimi 的 F1=1.0 只在 34 个自研教学样本上。<b>对标</b>：Vulnhuntr 靠「只读 Python 调用链」就挖出 12+ 生产 0day，Big Sleep 在 SQLite 挖真实内存洞——证明「小系统也能出真实成果」，关键是<b>真去扫一个真实开源仓库</b>。<b>判定</b>：课程不要求 0day 数量，但必须有「在真实 GitHub 仓库跑一遍 source_audit、列出候选、人工复核」的记录；哪怕最后都 REJECTED，也比玩具样本 F1=1.0 有说服力。</p>
+    </div>
+
+    <div class="scorecard must">
+      <div class="row"><span class="req">④ 提交国家漏洞库</span><span class="badge must">未启动 · 依赖③的真实产出</span></div>
+      <p><b>现状</b>：0 条提交记录。<b>判定</b>：④ 完全寄生在 ③ 上——没有经过独立 Verification + Evidence First 背书的真实候选，就没有可提交物。<b>课程约束下可接受</b>：国家漏洞库（如 CNVD/CNNVD）收录有门槛和审核周期，课程设计不强求真收；<b>但答辩前必须</b>把「一条完整的 CANDIDATE→VERIFYING→（UNVERIFIED）→证据链→拟提交说明」走通，证明流程具备，而不是空谈。</p>
+    </div>
+
+    <h3>差距本质：骨架领先，战果为零</h3>
+    <p style="color:#cdd5dd">VulnAgent 的<b>架构差异化其实有真东西</b>——统一漏洞 Schema + 独立 Verification 层 + Evidence First + 静态/Fuzz 联动，这些恰恰是 PentestGPT / PentestAgent（跑通即报）、ChatAFL/Fuzz4All/FuzzGPT（单点 fuzz 不编排）都缺的。问题不在设计，在于<b>从未让这套架构面对一个真实输入跑出真实输出</b>。评审看到的是：28k 行工程、763 测试，却没有一行实验报告来自 ExploitGym 或真实仓库。</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2><span class="idx">06</span>可执行改进优先级建议</h2>
+    <p class="lead">按「课程答辩价值 ÷ 实现成本」排序，前两项做了就能把最硬的「0 实战」短板补成有故事可讲。</p>
+    <ol class="prio">
+      <li>
+        <h4>在 ExploitGym 上跑通 1–2 个最简单的用户态任务 <span class="tag2">P0 · 必做</span></h4>
+        <p>不要碰 V8/内核（要 KVM、沙箱重），先选 data/task_ids 里最简单的用户态 OSS-Fuzz 任务。按官方 README：<code>uv sync --extra proxy</code> → <code>setup_data.sh</code> 解包 → <code>pre_run.py</code> 起 controller/Squid/proxy → 把 VulnAgent 的 source_audit + fuzz 接进 <code>run_agent.py</code> 并注入四个 CYBERGYM_* 环境变量 → 即使只能复现 PoV 触发崩溃、或扩展成读 flag，也写一份实验报告：任务 ID、用了哪些 Agent、哪一步卡住、拿到什么。目标不是追 Mythos 的 157，而是从 <b>0 → 1</b>。</p>
+      </li>
+      <li>
+        <h4>挑 3–5 个已有 PoC 写结构化原理分析 <span class="tag2">P0 · 必做</span></h4>
+        <p>从 third_party/exploitgym 里挑用户态 PoV，每个写：触发输入、根因 patch 前后 diff、为什么这个 patch 修了、PoV 为什么没越权而 exploit 能越权。直接回答课程要求①，也为 ④ 的证据链模板打底。</p>
+      </li>
+      <li>
+        <h4>在一个真实 Python 开源仓库跑一遍 source_audit <span class="tag2">P1 · 强烈建议</span></h4>
+        <p>学 Vulnhuntr 路线：挑一个 star 不高、自己熟悉的 Python Web 项目，跑完整 source_audit，把所有 CANDIDATE 过一遍 Verification，<b>无论最终 CONFIRMED 还是 REJECTED 都留记录</b>。这同时服务课程要求③，并天然产出「一条走通的漏洞流程」供要求④演示。</p>
+      </li>
+      <li>
+        <h4>把一条 CANDIDATE→VERIFICATION→证据链→拟提交说明走通 <span class="tag2">P1</span></h4>
+        <p>用第 3 步的任意一个候选（哪怕最后判 UNCERTAIN），完整跑 Evidence First：关联 source_location / code_snippet / fuzz_input / crash_log，由 VerificationAgent 定级，产出一份「拟提交国家漏洞库说明」草稿。证明流程具备即可，不强求真收录。</p>
+      </li>
+      <li>
+        <h4>（时间允许）补 C/C++/Go 跨函数污点与真实隔离 <span class="tag2">P2 · 有余力再做</span></h4>
+        <p>当前函数内污点、无真正网络/文件系统隔离是作者已承认的短板，但相对「0 实战」是第二位问题。答辩前不必追求，写进 future work 即可。</p>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2><span class="idx">07</span>同类项目设计亮点与可借鉴清单</h2>
+    <p class="lead">不是全盘照搬，而是把别家被验证过的机制，落到 VulnAgent 现有模块（Planner / Supervisor / SourceAudit / FuzzAgent / VerificationAgent / Evidence / LLM Adapter）上。成本：<span class="mono" style="color:var(--green)">低=1–2 天</span> / <span class="mono" style="color:var(--amber)">中=一周级</span> / <span class="mono" style="color:var(--red)">高=需新子系统</span>；并区分「答辩前值得」与「锦上添花」。</p>
+    <style>
+      .learn{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 20px;margin-bottom:12px}
+      .learn-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+      .ln{font-family:var(--mono);color:var(--amber);font-weight:600;font-size:13px}
+      .lt{font-weight:700;font-size:15.5px}
+      .badge.low{background:rgba(74,222,128,.14);color:var(--green)}
+      .badge.mid{background:rgba(251,191,36,.14);color:var(--amber)}
+      .badge.high{background:rgba(248,113,113,.14);color:var(--red)}
+      .badge.pick{background:rgba(103,232,249,.14);color:var(--cyan)}
+      .learn p{font-size:13.8px;color:#cdd5dd;margin:3px 0}
+      .learn p b{color:var(--text)}
+    </style>
+
+    <div class="learn">
+      <div class="learn-h"><span class="ln">L1</span><span class="lt">Vulnhuntr：分层自递归 prompt 审计</span><span class="badge low">低成本</span><span class="badge pick">答辩前值得</span></div>
+      <p><b>它怎么做：</b>读 README 摘要进上下文 → 全文初扫列可疑点 → 逐疑点喂「漏洞类型专用 prompt」二扫 → 按需跨文件拉函数补调用链 → 输出 scratchpad + PoC + 置信分（&lt;7 忽略）。</p>
+      <p><b>解决的问题：</b>一次塞全仓代码进长上下文必丢失重点；分层 + 按需检索把注意力和 token 用在刀刃上。</p>
+      <p><b>VulnAgent 差距：</b>SourceAuditAgent 偏「一把梭」喂代码，缺逐疑点深钻 + 置信度分级。</p>
+      <p><b>可落地：</b>把 SourceAuditAgent 改成两阶段——Stage1 产候选位置列表，Stage2 对每个候选用专属 prompt 跨文件补调用链，最终带 confidence 写进 VulnerabilityCandidate。</p>
+    </div>
+
+    <div class="learn">
+      <div class="learn-h"><span class="ln">L2</span><span class="lt">PentestGPT：推理 / 生成 / 解析三段式，各持独立会话</span><span class="badge mid">中成本</span><span class="badge">锦上添花</span></div>
+      <p><b>它怎么做：</b>Reasoning 维护任务树决定下一步、Generation 出命令、Parsing 解析工具回显，三个 LLM 会话刻意分开以防长上下文遗忘。</p>
+      <p><b>解决的问题：</b>推理与原始工具输出混在一个上下文，几轮后策略漂移。</p>
+      <p><b>VulnAgent 差距：</b>FuzzAgent 把 libFuzzer 回显和推理堆在一个会话里。</p>
+      <p><b>可落地：</b>FuzzAgent 内部拆「parse 子会话」——先把 libFuzzer 回显结构化成 {crashes, coverage, corpus} 摘要，再喂给推理主会话；Planner 已有任务树雏形可复用。</p>
+    </div>
+
+    <div class="learn">
+      <div class="learn-h"><span class="ln">L3</span><span class="lt">ATLANTIS：单编排器 + 职责固定模块，按目标类型裁剪组合</span><span class="badge low">低成本</span><span class="badge pick">答辩前值得</span></div>
+      <p><b>它怎么做：</b>CP-MANAGER 统一编排，C 类目标部署 Multilang+C、Java 类部署 Multilang+Java，模块间只走 API，状态机驱动路由（非自由协商）。</p>
+      <p><b>解决的问题：</b>多 agent 乱序调用、不可复现。</p>
+      <p><b>VulnAgent 差距（其实已大半对齐）：</b>Supervisor 已有界路由 MAX_AGENT_STEPS=15；缺的是「按 target 语言/类型选模块子集」。</p>
+      <p><b>可落地：</b>Supervisor 增加路由表——target=Python 走深度审计，=C/C++/Go 走 binary+fuzz，=加壳样本先走 program_restoration 再审计。这是把现有 Supervisor 讲成亮点的最便宜方式。</p>
+    </div>
+
+    <div class="learn">
+      <div class="learn-h"><span class="ln">L4</span><span class="lt">ATLANTIS / Buttercup：patch 生成 + 「重编译→功能测试→重跑 PoV」验证闭环</span><span class="badge high">高成本</span><span class="badge">锦上添花</span></div>
+      <p><b>它怎么做：</b>只对去重后的唯一 PoV 请求 patch；每出一个候选就 rebuild → 跑功能测试 → 重跑原 PoV 确认崩溃消失，不过就把反馈回灌让 coder 重生成。</p>
+      <p><b>解决的问题：</b>假修复、patch 破坏功能。</p>
+      <p><b>VulnAgent 差距：</b>目前只发现、不验证修复。</p>
+      <p><b>可落地：</b>VerificationAgent 增加「修复验证」子流程——对 CANDIDATE 生成最小 patch，重编译 + 重跑 PoV，把「崩溃是否消失」写成一条 VERIFICATION_RESULT 证据。课程不要求出补丁，做成 demo 即可。</p>
+    </div>
+
+    <div class="learn">
+      <div class="learn-h"><span class="ln">L5</span><span class="lt">ATLANTIS：按模块硬切 LLM 预算与 TPM 上限</span><span class="badge low">低成本</span><span class="badge pick">答辩前值得</span></div>
+      <p><b>它怎么做：</b>每个 CP/模块独立 API key，固定切分预算（SARIF 留 $500、Patch 25%、发现模块各 37.5%），并按模块设 TPM 上限，防单模块吃满配额。</p>
+      <p><b>解决的问题：</b>成本失控、单 agent 拖垮全局。</p>
+      <p><b>VulnAgent 差距：</b>LLM Adapter 统一了调用，但无 per-agent 预算/熔断。</p>
+      <p><b>可落地：</b>LLM Adapter 加 per-agent token / $ 计数与熔断（某 agent 超预算即降级到 MockLLM 或停）。这是「工程成熟度」一栏最便宜的加分。</p>
+    </div>
+
+    <div class="learn">
+      <div class="learn-h"><span class="ln">L6</span><span class="lt">Buttercup：「无 PoV 不上报」保守原则 + 便宜模型只干两件事</span><span class="badge low">低成本</span><span class="badge pick">答辩前值得</span></div>
+      <p><b>它怎么做：</b>没有触发 PoV 就不报 bug、不出 patch；LLM 只用于 fuzz seed 生成和 patch 生成，其余判断力交给 tree-sitter 静态定位 + libFuzzer/Jazzer 覆盖制导。</p>
+      <p><b>解决的问题：</b>高误报、贵模型乱推理。</p>
+      <p><b>VulnAgent 差距（架构已对齐，缺硬规则）：</b>已有 Verification 独占定级 + Evidence First，但「无证据不得 CONFIRMED」没写成机器强制规则。</p>
+      <p><b>可落地：</b>VerificationAgent 加硬校验：Evidence 里没有 FUZZ_INPUT / CRASH_LOG / SOURCE_LOCATION 等可复现证据，自动压到 UNCERTAIN。这与 AGENTS.md 的 Evidence First 完全同向。</p>
+    </div>
+
+    <div class="learn">
+      <div class="learn-h"><span class="ln">L7</span><span class="lt">Big Sleep：variant analysis（拿已知 bug 找同类模式）</span><span class="badge mid">中成本</span><span class="badge pick">答辩前值得</span></div>
+      <p><b>它怎么做：</b>不做无差别全仓扫，而是拿一个已修错误模式，让 agent 在代码库里找「同类写法」的其他位置——SQLite 栈下溢就是这么被发现的，常规 fuzz 没撞到。</p>
+      <p><b>解决的问题：</b>盲扫低效、漏报。</p>
+      <p><b>VulnAgent 差距：</b>缺「从已知漏洞模式出发的定向检索」。</p>
+      <p><b>可落地：</b>从 ExploitGym PoV / 历史 CVE 提取错误模式（如「-1 当数组索引」「未校验长度的 memcpy」），让 SourceAuditAgent 在真实 GitHub 仓库里找同类——直接服务课程要求③（挖未公开漏洞）。</p>
+    </div>
+
+    <div class="learn">
+      <div class="learn-h"><span class="ln">L8</span><span class="lt">Big Sleep / ATLANTIS：agent 工具循环 + fuzz stuck 自动喂 LLM</span><span class="badge mid">中成本</span><span class="badge">锦上添花</span></div>
+      <p><b>它怎么做：</b>读码→假设→生成输入→跑→看 sanitizer 崩溃，阴性则修正假设；ATLANTIS 的 fuzzer 种子 2 分钟无新覆盖就把调用栈+源码 trace 喂 LLM 造新输入。</p>
+      <p><b>解决的问题：</b>fuzz 卡死在低覆盖区。</p>
+      <p><b>VulnAgent 差距：</b>已接真实 libFuzzer/ASan，但缺「卡住→LLM 辅助变异」的闭环。</p>
+      <p><b>可落地：</b>FuzzAgent 加 stuck-detector（N 分钟无新边）→ 把崩溃/覆盖率摘要交给 LLM 生成新 seed，回喂 libFuzzer corpus。</p>
+    </div>
+
+    <div class="learn">
+      <div class="learn-h"><span class="ln">L9</span><span class="lt">CAI：显式 Handoffs + 可复用编排 Patterns</span><span class="badge mid">中成本</span><span class="badge">锦上添花</span></div>
+      <p><b>它怎么做：</b>多 agent 之间不互调函数，而是按 LangGraph 式显式交接把任务连同上下文移交给下一个专职 agent；把「侦察→扫描→利用→报告」固化成可复用模板。</p>
+      <p><b>解决的问题：</b>一个大 prompt 塞所有职责、每次从零写流程。</p>
+      <p><b>VulnAgent 差距：</b>agent_runtime 已用 AgentMessage 交接，接近 Handoffs；缺的是把典型流程固化成命名 pattern。</p>
+      <p><b>可落地：</b>把「源码审计」「二进制还原→审计」「fuzz→崩溃复核」固化成 Supervisor 可一键调用的命名模板（pattern），降低答辩时演示的不确定性。</p>
+    </div>
+
+    <div class="learn">
+      <div class="learn-h"><span class="ln">L10</span><span class="lt">CAI：四层 guardrail 防 prompt 注入</span><span class="badge low">低成本</span><span class="badge pick">答辩前值得</span></div>
+      <p><b>它怎么做：</b>工具回包一律包成「=== EXTERNAL DATA ONLY ===」；拦截 <code>$(...)</code>/反引号命令替换；拦「base64 解码即落盘执行」；一次性容器会话后重置。</p>
+      <p><b>解决的问题：</b>目标程序输出里的恶意指令劫持 agent。</p>
+      <p><b>VulnAgent 差距：</b>FuzzAgent 跑第三方二进制、读恶意文件 strings，注入面未隔离。</p>
+      <p><b>可落地：</b>把 fuzz 回显 / 二进制 strings / 反汇编文本喂 LLM 前统一包成外部数据标记，并正则过滤命令替换模式——低成本体现安全意识，呼应 AGENTS.md 安全原则。</p>
+    </div>
+
+    <div class="learn">
+      <div class="learn-h"><span class="ln">L11</span><span class="lt">ExploitGym harness：资源硬限 + 双 agent-as-a-judge</span><span class="badge mid">中成本</span><span class="badge pick">答辩前值得</span></div>
+      <p><b>它怎么做：</b>每个 agent 实例单 Docker 容器硬限 4 vCPU/8GB，出口走白名单 egress 代理；成功要过两关——抓到动态 flag + 两个独立 judge 复核「你真打的是指定漏洞而非走捷径」。</p>
+      <p><b>解决的问题：</b>逃逸、作弊、误判。</p>
+      <p><b>VulnAgent 差距：</b>Windows Job Object 已有进程级隔离但缺资源限额；VerificationAgent 是单方定级。</p>
+      <p><b>可落地：</b>(a) Fuzz 跑第三方目标时补 CPU/内存上限与出站白名单；(b) 高风险 CANDIDATE 走「两个不同 LLM 互验」，一致才 CONFIRMED——把现有 ReviewerAgent 用成第二 judge。</p>
+    </div>
+
+    <div class="learn">
+      <div class="learn-h"><span class="ln">L12</span><span class="lt">ATLANTIS：directed fuzz 按静态危险点选 seed 优先级</span><span class="badge high">高成本</span><span class="badge">锦上添花</span></div>
+      <p><b>它怎么做：</b>BULLSEYE 用 LLVM pass 算跨过程 CFG 距离中心性选 landmark，在 AFL++ 上改 power schedule 把种子优先级推向危险 sink；配合 SymCC 混合执行。</p>
+      <p><b>解决的问题：</b>通用 fuzz 打不到复杂路径。</p>
+      <p><b>VulnAgent 差距：</b>已有符号执行引擎 + libFuzzer，但 seed 选择未利用污点 sink 信息。</p>
+      <p><b>可落地：</b>给 libfuzzer.py 对接加「按静态污点 sink 距离给 seed 打分」的轻量启发式；完整 directed fuzz 留作 future work。</p>
+    </div>
+
+    <h3 style="margin-top:26px">一句话总结</h3>
+    <p style="color:#cdd5dd">VulnAgent 的「统一 Schema + 独立 Verification + Evidence First」骨架其实已经暗合 Buttercup / ATLANTIS 的保守验证哲学；<b>答辩前最该做的不是重写架构，而是补三条低成本硬规则：L1 分层深钻、L6 无证据不确认、L10 防注入包装，再加 L7 variant analysis 去真实仓库扫一遍</b>——这四步同时把「0 实战」和「误报控制」两个最痛的问题一起推进。</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2><span class="idx">08</span>主要来源</h2>
+    <p class="lead">外部事实出处；本地事实来自仓库勘查。标注「未查证」的项见正文。</p>
+    <ol class="src">
+      <li>ExploitGym 论文与任务集：<a href="https://arxiv.org/abs/2605.11086">arXiv:2605.11086</a> · 官方博客 <a href="https://rdi.berkeley.edu/blog/exploitgym/">rdi.berkeley.edu/blog/exploitgym</a> · 代码 <a href="https://github.com/sunblaze-ucb/exploitgym">sunblaze-ucb/exploitgym</a></li>
+      <li>ExploitGym baseline 成绩表：<a href="https://rdi.berkeley.edu/blog/exploitgym/">官方博客 Table 1</a></li>
+      <li>AIxCC 决赛结果与名次：<a href="https://arpa-h.gov/news-and-events/arpa-h-darpa-challenge-showcases-ais-power-secure-americas-health-care">ARPA-H/DARPA 官方</a> · Samsung 新闻稿（冠军 ATLANTIS / 400 万）</li>
+      <li>ATLANTIS 系统论文：<a href="https://arxiv.org/abs/2509.14589">arXiv:2509.14589</a>；Trail of Bits Buttercup：<a href="https://trailofbits.com/buttercup/">trailofbits.com/buttercup</a></li>
+      <li>CAI 框架：<a href="https://github.com/aliasrobotics/cai">aliasrobotics/cai</a> · 论文 arXiv:2504.06017</li>
+      <li>Vulnhuntr：<a href="https://pypi.org/project/vulnhuntr/">PyPI vulnhuntr</a></li>
+      <li>Google Big Sleep：<a href="https://blog.google/technology/safety-security/cybersecurity-updates-summer-2025/">Google 官方博客 2025-07</a> · Cloud Security 博客</li>
+      <li>PentestGPT：<a href="https://www.usenix.org/system/files/usenixsecurity24-appendix-deng.pdf">USENIX Security 2024</a> · <a href="https://pentestgpt.com/">pentestgpt.com</a></li>
+      <li>LLM4Vuln：<a href="https://arxiv.org/abs/2401.16185">arXiv:2401.16185</a>；能力综述 <a href="https://arxiv.org/abs/2507.22659">arXiv:2507.22659</a></li>
+      <li>Fuzz4All：<a href="https://arxiv.org/abs/2308.04748">arXiv:2308.04748</a>；FuzzGPT：<a href="https://arxiv.org/abs/2304.02014">arXiv:2304.02014</a>；ChatAFL：NDSS 2024</li>
+      <li>ATLANTIS 系统论文（CP-MANAGER/patch 验证闭环/预算切分）：<a href="https://arxiv.org/abs/2509.14589">arXiv:2509.14589</a>；基础设施博客 <a href="https://team-atlanta.github.io/blog/post-atl-infra/">team-atlanta.github.io</a></li>
+      <li>Trail of Bits Buttercup（无 PoV 不上报/便宜模型用法）：<a href="https://blog.trailofbits.com/2025/08/09/trail-of-bits-buttercup-wins-2nd-place-in-aixcc-challenge/">官方博客</a></li>
+      <li>CAI 四层 guardrail（防 prompt 注入）：<a href="https://arxiv.org/html/2508.21669v2">arXiv:2508.21669</a></li>
+      <li>Big Sleep variant analysis 与 GTIG 联动：<a href="https://cloud.google.com/blog/products/identity-security/cloud-ciso-perspectives-our-big-sleep-agent-makes-big-leap/">Cloud Security 博客</a></li>
+      <li>ExploitGym harness 沙箱/双 judge 机制：<a href="https://arxiv.org/html/2605.11086">arXiv:2605.11086 §3</a></li>
+    </ol>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    VulnAgent 课程设计 · 同类项目对比与差距分析 · 2026-09-25 · 外部事实均附来源，本地事实来自仓库勘查；雷达评分为作者定性判断。
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<script>
+window.addEventListener('load', function(){
+  var ok = (typeof echarts !== 'undefined');
+  function showFallback(id){ var el=document.getElementById(id); if(el) el.style.display='block'; }
+  if(!ok){ showFallback('radarFallback'); showFallback('barFallback'); return; }
+
+  var darkGrid='rgba(42,49,58,.6)';
+  // ---- Radar ----
+  var r=echarts.init(document.getElementById('radar'),null,{renderer:'canvas'});
+  r.setOption({
+    backgroundColor:'transparent',
+    tooltip:{},
+    legend:{bottom:8,textStyle:{color:'#cdd5dd',fontSize:11.5},itemWidth:12,itemHeight:8,itemGap:14},
+    radar:{
+      indicator:[
+        {name:'自主性',max:5},{name:'静态分析深度',max:5},{name:'动态/Fuzz',max:5},
+        {name:'符号/逆向',max:5},{name:'真实漏洞战果',max:5},{name:'评测严谨度',max:5},{name:'工程成熟度',max:5}
+      ],
+      axisName:{color:'#9aa6b2',fontSize:12},
+      splitLine:{lineStyle:{color:darkGrid}},splitArea:{areaStyle:{color:['rgba(255,255,255,.01)','rgba(255,255,255,.03)']}},
+      axisLine:{lineStyle:{color:darkGrid}}
+    },
+    series:[{type:'radar',symbolSize:4,data:[
+      {name:'VulnAgent',value:[4,4,4,4,1,2,4],lineStyle:{color:'#fbbf24',width:2.5},itemStyle:{color:'#fbbf24'},areaStyle:{color:'rgba(251,191,36,.18)'}},
+      {name:'ATLANTIS(AIxCC冠军)',value:[5,4,5,4,5,5,5],lineStyle:{color:'#4ade80'},itemStyle:{color:'#4ade80'}},
+      {name:'Big Sleep',value:[5,4,5,4,5,4,5],lineStyle:{color:'#67e8f9'},itemStyle:{color:'#67e8f9'}},
+      {name:'Vulnhuntr',value:[4,3,1,1,4,3,3],lineStyle:{color:'#7dd3fc'},itemStyle:{color:'#7dd3fc'}},
+      {name:'CAI',value:[4,2,2,1,3,2,4],lineStyle:{color:'#c4b5fd'},itemStyle:{color:'#c4b5fd'}},
+      {name:'PentestGPT',value:[2.5,1,2,1,2,4,4],lineStyle:{color:'#f87171'},itemStyle:{color:'#f87171'}}
+    ]}]
+  });
+
+  // ---- Bar: ExploitGym baseline ----
+  var b=echarts.init(document.getElementById('bar'),null,{renderer:'canvas'});
+  b.setOption({
+    backgroundColor:'transparent',
+    grid:{left:150,right:60,top:10,bottom:30},
+    tooltip:{trigger:'axis',axisPointer:{type:'shadow'}},
+    xAxis:{type:'value',axisLabel:{color:'#9aa6b2'},splitLine:{lineStyle:{color:darkGrid}}},
+    yAxis:{type:'category',inverse:true,
+      data:['Claude Mythos','GPT-5.5','GPT-5.4','Claude Opus 4.6','Gemini 3.1 Pro','Claude Opus 4.7','GLM-5.1'],
+      axisLabel:{color:'#cdd5dd',fontSize:12}},
+    series:[{
+      type:'bar',barWidth:18,
+      data:[
+        {value:157,itemStyle:{color:'#4ade80'}},
+        {value:120,itemStyle:{color:'#4ade80'}},
+        {value:54,itemStyle:{color:'#fbbf24'}},
+        {value:15,itemStyle:{color:'#f87171'}},
+        {value:12,itemStyle:{color:'#f87171'}},
+        {value:7,itemStyle:{color:'#f87171'}},
+        {value:4,itemStyle:{color:'#f87171'}}
+      ],
+      label:{show:true,position:'right',color:'#e7ebef',fontFamily:'JetBrains Mono, monospace',formatter:'{c} / 898'}
+    }]
+  });
+  window.addEventListener('resize',function(){r.resize();b.resize();});
+});
+</script>
+</body>
+</html>

@@ -86,7 +86,8 @@ async def test_evidence_driven_source_loop_confirms_and_filters() -> None:
     fp_evidence = [make_evidence("e-fp", EvidenceType.SOURCE_LOCATION, reliability=0.35)]
     false_positive = source_candidate("vuln-fp", evidence_ids=["e-fp"], location=loc_fp)
 
-    # LLM-only claim: no code/runtime corroboration.
+    # LLM-only claim: no code/runtime corroboration; S3 guard rejects a
+    # root cause that rests only on model reasoning.
     llm_evidence = [make_evidence("e-llm", EvidenceType.MODEL_REASONING_SUMMARY, reliability=0.5)]
     llm_only = source_candidate("vuln-llm", evidence_ids=["e-llm"], location=loc_llm)
 
@@ -102,7 +103,7 @@ async def test_evidence_driven_source_loop_confirms_and_filters() -> None:
     status_by_id = {item.vulnerability_id: item.status for item in context.findings}
     assert status_by_id["vuln-real"] is VulnerabilityStatus.CONFIRMED
     assert status_by_id["vuln-fp"] is VulnerabilityStatus.UNCERTAIN
-    assert status_by_id["vuln-llm"] is VulnerabilityStatus.UNCERTAIN
+    assert status_by_id["vuln-llm"] is VulnerabilityStatus.REJECTED
 
     # Evidence-first: every finding carries its own verdict evidence with a rationale.
     verdict_ids = {

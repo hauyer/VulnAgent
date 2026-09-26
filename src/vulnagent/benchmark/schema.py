@@ -57,6 +57,14 @@ class BlindCaseManifest(BaseModel):
 
     schema_version: int = Field(default=1)
     case_id: str
+    opaque_case_id: str = Field(
+        default="",
+        description=(
+            "de-identified handle used inside the agent workspace; the "
+            "evaluator remaps candidate rows keyed by this handle to the "
+            "dataset case_id"
+        ),
+    )
     project: str
     family_id: str
     dataset: DatasetName
@@ -112,6 +120,15 @@ class CaseRunStatus(str, Enum):
     INVALID = "invalid"
 
 
+class MatchBasis(str, Enum):
+    """How a candidate matched a ground truth record (honest localization)."""
+
+    EXACT_LOCATION = "exact_location"  # file:line equal
+    SAME_FILE = "same_file"  # file equal, line differs or GT line unknown
+    TYPE_ONLY = "type_only"  # CWE / vulnerability type overlap only
+    NONE = "none"
+
+
 class CaseOutcome(BaseModel):
     """One case classified against the hidden ground truth."""
 
@@ -122,8 +139,12 @@ class CaseOutcome(BaseModel):
     tp: bool = False
     fp: bool = False
     fn: bool = False
-    n_candidates: int = 0
+    tn: bool = False  # no GT and no candidate (clean case, not a finding)
+    n_candidates: int = 0  # unique root-cause candidates after clustering
+    raw_crashes: int = 0  # raw crash observations before clustering
     loc_error: float | None = None  # normalized 0..1 localization error
+    match_basis: MatchBasis = MatchBasis.NONE
+    gt_count: int = 0
     note: str = ""
 
 
@@ -132,19 +153,32 @@ class EvaluationResult(BaseModel):
 
     Failed/skipped cases are kept in ``per_case`` with their status; precision
     and recall are computed only over evaluable cases while the original
-    denominator is reported separately (never silently deleted).
+    denominator is reported separately (never silently deleted).  Case-level
+    and candidate-level metrics are reported separately; clean cases with no
+    candidates never inflate precision/recall to 1.0 (they are ``tn`` rows in
+    ``per_case`` and count toward ``total_targets`` only).
     """
 
     run_id: str
-    total_cases: int
+    total_targets: int  # full sample list (manifest/denominator), never 0-dropped
+    total_cases: int  # cases that appear in GT or candidate rows
     evaluable_cases: int
     excluded: list[str] = Field(default_factory=list)  # with reasons
+    # Candidate-level metrics (each unique root-cause candidate is one unit).
     tp: int = 0
     fp: int = 0
     fn: int = 0
     precision: float | None = None
     recall: float | None = None
+    # Case-level metrics.
+    case_tp: int = 0
+    case_fp: int = 0
+    case_fn: int = 0
+    case_tn: int = 0
+    case_precision: float | None = None
+    case_recall: float | None = None
     avg_loc_error: float | None = None
+    match_policy: str = "strict"
     per_case: list[CaseOutcome] = Field(default_factory=list)
 
     def write_metrics(self, path: str) -> None:

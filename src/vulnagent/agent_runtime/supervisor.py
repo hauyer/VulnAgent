@@ -1,5 +1,6 @@
 """Deterministic V0.2 supervisor for context-aware agent selection."""
 
+from collections.abc import Callable
 from typing import Any
 
 from vulnagent.contracts import AnalysisContext, TargetType, Task
@@ -23,6 +24,7 @@ class Supervisor:
         max_analysis_retries: int = 1,
         available_routes: set[str] | None = None,
         gap_planner: EvidenceGapPlanner | None = None,
+        profile_hint_reader: Callable[[Task], set[str] | None] | None = None,
     ) -> None:
         if max_analysis_retries < 0:
             raise ValueError(
@@ -32,6 +34,7 @@ class Supervisor:
         self.max_analysis_retries = max_analysis_retries
         self.available_routes = available_routes
         self.gap_planner = gap_planner
+        self.profile_hint_reader = profile_hint_reader
         self._gap_plan: PlanDecision | None = None
 
     def decide(self, task: Task, context: AnalysisContext, state: RuntimeState) -> RouteDecision:
@@ -43,7 +46,7 @@ class Supervisor:
         if current == AgentRoute.PLANNER.value:
             route = (
                 AgentRoute.PROGRAM_RESTORATION
-                if self._protected_binary(task) and self._available(AgentRoute.PROGRAM_RESTORATION)
+                if self._protected_binary(task) and self._available(AgentRoute.PROGRAM_RESTORATION, task)
                 else AgentRoute.BINARY_ANALYSIS
                 if task.target.target_type is TargetType.BINARY
                 else AgentRoute.SOURCE_ANALYSIS
@@ -54,13 +57,13 @@ class Supervisor:
         if (
             current == AgentRoute.BINARY_ANALYSIS.value
             and self._protected_binary(task)
-            and self._available(AgentRoute.CODE_DEOBFUSCATION)
+            and self._available(AgentRoute.CODE_DEOBFUSCATION, task)
         ):
             if history.count(AgentRoute.CODE_DEOBFUSCATION.value) < history.count(AgentRoute.BINARY_ANALYSIS.value):
                 return RouteDecision(AgentRoute.CODE_DEOBFUSCATION, "recover protected code semantics before vulnerability verification")
         if (
             current == AgentRoute.SOURCE_ANALYSIS.value
-            and self._available(AgentRoute.CODE_AUDIT)
+            and self._available(AgentRoute.CODE_AUDIT, task)
             and history.count(AgentRoute.CODE_AUDIT.value)
             < history.count(AgentRoute.SOURCE_ANALYSIS.value)
             and any(
@@ -81,6 +84,14 @@ class Supervisor:
             if self.gap_planner is not None and current == AgentRoute.SOURCE_ANALYSIS.value:
                 return self._route_by_evidence_gap(task, context, history)
             if not context.findings:
+                # Authorized dynamic discovery must not be blocked by the
+                # absence of static findings (blind discovery runs produce
+                # candidates from execution, not from static review).
+                if self._fuzz_requested(task, context) and AgentRoute.FUZZ.value not in history:
+                    return RouteDecision(
+                        AgentRoute.FUZZ,
+                        "authorized dynamic discovery requested despite no static findings",
+                    )
                 return RouteDecision(AgentRoute.REPORT, "analysis completed without findings")
             if self._fuzz_requested(task, context) and AgentRoute.FUZZ.value not in history:
                 return RouteDecision(AgentRoute.FUZZ, "authorized dynamic evidence was requested")
@@ -275,8 +286,14 @@ class Supervisor:
             "obfuscated_binary",
         } or str(task.target.file_format or "").casefold() in {"dex", "apk"}
 
-    def _available(self, route: AgentRoute) -> bool:
-        return self.available_routes is None or route.value in self.available_routes
+    def _available(self, route: AgentRoute, task: Task) -> bool:
+        if self.available_routes is not None and route.value not in self.available_routes:
+            return False
+        if self.profile_hint_reader is not None:
+            allowed = self.profile_hint_reader(task)
+            if allowed is not None and route.value not in allowed:
+                return False
+        return True
 
     @staticmethod
     def _fuzz_requested(task: Task, context: AnalysisContext) -> bool:

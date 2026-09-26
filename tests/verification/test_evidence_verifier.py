@@ -54,8 +54,10 @@ async def test_model_reasoning_alone_cannot_confirm() -> None:
     evidence = [make_evidence("e1", EvidenceType.MODEL_REASONING_SUMMARY, reliability=0.5)]
     candidate = make_candidate(evidence_ids=["e1"])
     result = await verify(candidate, evidence)
-    assert result.status is VulnerabilityStatus.UNCERTAIN
-    assert "model reasoning" in result.rationale
+    # S3 guard: root cause never rests on model reasoning alone.
+    assert result.status is VulnerabilityStatus.REJECTED
+    assert result.metadata["stage"] == "guard_model_reasoning"
+    assert "model" in result.rationale
 
 
 async def test_candidate_without_evidence_is_rejected() -> None:

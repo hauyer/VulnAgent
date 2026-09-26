@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -37,6 +37,37 @@ LOCAL_FRONTEND_ORIGINS = [
     "http://127.0.0.1:4173",
     "http://localhost:4173",
 ]
+
+
+def _install_error_envelope(application: FastAPI) -> None:
+    """Wrap every HTTP/validation error in the uniform S6 envelope.
+
+    The legacy ``detail`` key is preserved inside the envelope so pre-existing
+    clients that read ``response.json()["detail"]`` keep working.
+    """
+    from fastapi.exceptions import RequestValidationError
+    from fastapi.responses import JSONResponse
+
+    from vulnagent.api.errors import _envelope_from_exception
+
+    @application.exception_handler(HTTPException)
+    async def _http_handler(request, exc: HTTPException) -> JSONResponse:
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=_envelope_from_exception(exc),
+        )
+
+    @application.exception_handler(RequestValidationError)
+    async def _validation_handler(request, exc: RequestValidationError) -> JSONResponse:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "code": "BAD_REQUEST",
+                "message": "request validation failed",
+                "retryable": False,
+                "detail": str(exc.errors()[:5]),
+            },
+        )
 
 
 def _mount_built_frontend(application: FastAPI, repository_root: Path) -> bool:
@@ -76,6 +107,7 @@ def create_app(
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         allow_headers=["Content-Type", "Accept"],
     )
+    _install_error_envelope(application)
     application.state.services = resolved_services
     application.state.task_manager = resolved_services.task_manager
     application.state.evidence_store = resolved_services.evidence_store

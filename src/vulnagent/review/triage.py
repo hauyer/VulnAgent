@@ -5,6 +5,12 @@ candidate as a known duplicate, an unverified novel candidate, or
 insufficient evidence, and anything that survives goes to human review.
 Negative observations are logged but, on the exploratory track with no
 preset positive example, are never counted as true negatives.
+
+S5 extension (roadmap work-package C step 4): post-freeze dedup classification
+against public advisories/CVEs, using exactly the four classes the roadmap
+defines -- novelty_unknown / known_duplicate / false_positive /
+needs_more_evidence -- with reproducible evidence and independent verification
+as inputs.
 """
 
 from __future__ import annotations
@@ -121,3 +127,134 @@ class HistoricalKnowledgeDedup:
             "counted_as_tn": "false",
             "reason": "exploratory track: no preset positive example",
         }
+
+
+class DedupClass(str, Enum):
+    """S5 post-freeze novelty classification (roadmap work-package C)."""
+
+    NOVELTY_UNKNOWN = "novelty_unknown"
+    KNOWN_DUPLICATE = "known_duplicate"
+    FALSE_POSITIVE = "false_positive"
+    NEEDS_MORE_EVIDENCE = "needs_more_evidence"
+
+
+@dataclass(slots=True)
+class PublicAdvisory:
+    """A verified public record used for dedup (CVE / advisory)."""
+
+    cve_id: str
+    root_cause_fingerprint: str  # distinctive function/symbol/message text
+    affected_version: str
+    fixed_revision: str | None
+    source: str  # e.g. "nvd", "cve.org", "redhat_bugzilla", "vulncheck"
+    url: str = ""
+
+
+@dataclass(slots=True)
+class DedupResult:
+    candidate_ref: str
+    dedup_class: DedupClass
+    matched: list[PublicAdvisory] = field(default_factory=list)
+    reasons: list[str] = field(default_factory=list)
+
+
+class DedupClassifier:
+    """Classify a frozen discovery record into the roadmap's four classes.
+
+    Decision table (deterministic):
+      * public advisory matches the root-cause fingerprint (and, where
+        relevant, the affected version) -> ``KNOWN_DUPLICATE``.
+      * not reproducible (replay fails) or verification rejected the fault ->
+        ``FALSE_POSITIVE``.
+      * reproducible fault with an independent verdict, but no public match
+        and no human maintainer review yet -> ``NEEDS_MORE_EVIDENCE``
+        (the engine never asserts novelty without human confirmation).
+      * reproducible + verified + human review completed + no public match ->
+        ``NOVELTY_UNKNOWN`` (a candidate to carry into disclosure discussion;
+        still not an assertion of a 0-day).
+    """
+
+    def __init__(self, advisories: list[PublicAdvisory] | None = None) -> None:
+        self.advisories: list[PublicAdvisory] = list(advisories or [])
+
+    def register(self, advisory: PublicAdvisory) -> None:
+        self.advisories.append(advisory)
+
+    @staticmethod
+    def _match(meta: dict[str, Any], adv: PublicAdvisory) -> bool:
+        corpus = " ".join(
+            str(meta.get(key, "")) for key in ("title", "description", "root_cause")
+        ).lower()
+        token = adv.root_cause_fingerprint.lower()
+        return bool(re.search(rf"\b{re.escape(token)}\b", corpus))
+
+    def classify(
+        self,
+        candidate_ref: str,
+        meta: dict[str, Any],
+        *,
+        reproducible: bool,
+        verification_status: str,
+        human_reviewed: bool = False,
+    ) -> DedupResult:
+        reasons: list[str] = []
+        matched: list[PublicAdvisory] = []
+
+        for adv in self.advisories:
+            if self._match(meta, adv):
+                matched.append(adv)
+
+        if matched:
+            reasons.append(
+                f"public {matched[0].source} record {matched[0].cve_id} matches "
+                f"root-cause fingerprint '{matched[0].root_cause_fingerprint}' "
+                f"(affected {matched[0].affected_version})"
+            )
+            return DedupResult(
+                candidate_ref=candidate_ref,
+                dedup_class=DedupClass.KNOWN_DUPLICATE,
+                matched=matched,
+                reasons=reasons,
+            )
+
+        if not reproducible:
+            reasons.append("replay did not reproduce the fault; no verifiable finding")
+            return DedupResult(
+                candidate_ref=candidate_ref,
+                dedup_class=DedupClass.FALSE_POSITIVE,
+                reasons=reasons,
+            )
+
+        if verification_status not in {"CONFIRMED"}:
+            reasons.append(
+                f"independent verification did not confirm the fault "
+                f"(status={verification_status})"
+            )
+            return DedupResult(
+                candidate_ref=candidate_ref,
+                dedup_class=DedupClass.FALSE_POSITIVE,
+                reasons=reasons,
+            )
+
+        if not human_reviewed:
+            reasons.append(
+                "reproducible + independently confirmed fault, but no public match "
+                "and no human maintainer review yet -> evidence insufficient to "
+                "assert novelty"
+            )
+            return DedupResult(
+                candidate_ref=candidate_ref,
+                dedup_class=DedupClass.NEEDS_MORE_EVIDENCE,
+                reasons=reasons,
+            )
+
+        reasons.append(
+            "reproducible + independently confirmed + human-reviewed + no public "
+            "match -> carries into disclosure discussion as a candidate of unknown "
+            "novelty (not asserted as a 0-day)"
+        )
+        return DedupResult(
+            candidate_ref=candidate_ref,
+            dedup_class=DedupClass.NOVELTY_UNKNOWN,
+            reasons=reasons,
+        )
